@@ -1,0 +1,96 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ page_title ?? 'Espace vendeuse' }}{% endblock %}
+
+{% block body %}
+    <div class="container py-4">
+
+        <div class="d-flex justify-content-between align-items-start mb-4">
+            <div>
+                <h1 class="h3 mb-1">{{ page_title }}</h1>
+                <p class="text-muted mb-1 small">
+                    Magasin actuel :
+                    <strong>{{ current_location.name }}</strong>
+                    <span class="text-muted">({{ current_location.code }})</span>
+                </p>
+                <a href="{{ path('user_select_location') }}" class="link-secondary small">
+                    Changer de magasin
+                </a>
+            </div>
+
+            <div class="text-end">
+                <p class="text-muted small mb-1">
+                    Connecté en tant que <strong>{{ app.user.username }}</strong>
+                </p>
+                <a href="{{ path('app_logout') }}" class="btn btn-outline-danger btn-sm">
+                    Déconnexion
+                </a>
+            </div>
+        </div>
+
+        {# Grille 2x2 adaptée aux tablettes 11" #}
+        <div class="row g-4">
+            <div class="col-12 col-md-6">
+                <a href="{{ path('user_sell') }}" class="text-decoration-none">
+                    <div class="card h-100 shadow-sm border-0">
+                        <div class="card-body text-center py-4">
+                            <div class="fs-2 mb-2">🧾</div>
+                            <h2 class="h5 mb-1">Vente</h2>
+                            <p class="text-muted mb-0 small">
+                                Scanner ou saisir une référence pour enregistrer une vente.
+                            </p>
+                        </div>
+                    </div>
+                </a>
+            </div>
+
+            <div class="col-12 col-md-6">
+                <a href="{{ path('user_check_stock') }}" class="text-decoration-none">
+                    <div class="card h-100 shadow-sm border-0">
+                        <div class="card-body text-center py-4">
+                            <div class="fs-2 mb-2">📦</div>
+                            <h2 class="h5 mb-1">Consultation stock</h2>
+                            <p class="text-muted mb-1 small">
+                                Voir les disponibilités par taille et par magasin.
+                            </p>
+                            <p class="text-muted mb-0 small">
+                                <a href="{{ path('user_reservations_transfers') }}" class="link-secondary">
+                                    Gérer les réservations & transferts
+                                </a>
+                            </p>
+                        </div>
+                    </div>
+                </a>
+            </div>
+
+            <div class="col-12 col-md-6">
+                <a href="{{ path('user_add_stock') }}" class="text-decoration-none">
+                    <div class="card h-100 shadow-sm border-0">
+                        <div class="card-body text-center py-4">
+                            <div class="fs-2 mb-2">➕</div>
+                            <h2 class="h5 mb-1">Ajout de stock</h2>
+                            <p class="text-muted mb-0 small">
+                                Ajouter des produits reçus dans le stock du magasin.
+                            </p>
+                        </div>
+                    </div>
+                </a>
+            </div>
+
+            <div class="col-12 col-md-6">
+                <a href="{{ path('user_return_stock') }}" class="text-decoration-none">
+                    <div class="card h-100 shadow-sm border-0">
+                        <div class="card-body text-center py-4">
+                            <div class="fs-2 mb-2">↩️</div>
+                            <h2 class="h5 mb-1">Retour produit</h2>
+                            <p class="text-muted mb-0 small">
+                                Réintégrer un produit retourné au stock (bientôt).
+                            </p>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        </div>
+
+    </div>
+{% endblock %}

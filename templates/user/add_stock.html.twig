@@ -1,0 +1,201 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ page_title ?? 'Ajout de stock' }}{% endblock %}
+
+{% block body %}
+<div class="container py-4">
+
+    {# Header : titre + magasin + retour dashboard #}
+    <div class="d-flex justify-content-between align-items-start mb-4">
+        <div>
+            <h1 class="h3 mb-1">{{ page_title ?? 'Ajout de stock' }}</h1>
+            {% if current_location is defined and current_location %}
+                <p class="text-muted mb-1 small">
+                    Magasin actuel :
+                    <strong>{{ current_location.name }}</strong>
+                    <span class="text-muted">({{ current_location.code }})</span>
+                </p>
+            {% endif %}
+            <p class="text-muted mb-0 small">
+                Scannez ou saisissez une référence pour préparer l'ajout de pièces au stock de ce magasin.
+            </p>
+        </div>
+        <a href="{{ path('user_dashboard') }}" class="btn btn-outline-secondary btn-sm">
+            ← Accueil vendeuse
+        </a>
+    </div>
+
+    {# Messages flash #}
+    {% for label, messages in app.flashes %}
+        {% for message in messages %}
+            <div class="alert alert-{{ label }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>
+            </div>
+        {% endfor %}
+    {% endfor %}
+
+    <div class="row g-4">
+        {# Colonne gauche : saisie / scan #}
+        <div class="col-12 col-lg-5">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Saisie des produits reçus</h2>
+
+                    <form method="post" action="{{ path('user_add_stock_add_line') }}">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Référence produit</label>
+                            <input
+                                type="text"
+                                id="add_stock_reference"
+                                name="reference"
+                                class="form-control form-control-lg"
+                                placeholder="Scanner ou saisir une référence"
+                                autocomplete="off"
+                                required
+                                value="{{ prefilled_reference|default('') }}"
+                                data-autocomplete="product-reference"
+                                data-autocomplete-url="{{ path('autocomplete_product_reference') }}"
+                            >
+                            <div class="form-text">
+                                Scannez une étiquette ou saisissez la référence produit au clavier.
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">
+                                Taille
+                            </label>
+
+                            <input type="hidden" name="size_id" id="add_stock_size_id" required>
+
+                            <div id="add_stock_sizes_container">
+                                <p class="text-muted small mb-2">
+                                    Saisissez d’abord une référence. Les tailles disponibles dans ce magasin
+                                    s’afficheront ici avec leur stock actuel.
+                                </p>
+                                <div id="add_stock_sizes_buttons" class="d-flex flex-wrap gap-2">
+                                    {# Boutons générés dynamiquement par JS #}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Quantité à ajouter</label>
+                            <input
+                                type="number"
+                                name="quantity"
+                                min="1"
+                                value="1"
+                                class="form-control form-control-lg"
+                                required
+                            >
+                        </div>
+
+                        <button
+                            type="submit"
+                            class="btn btn-primary btn-lg w-100"
+                            id="add_stock_submit_btn"
+                            disabled
+                        >
+                            Ajouter au panier d'ajout de stock
+                        </button>
+                    </form>
+
+                    <hr class="my-4">
+
+                    <p class="text-muted small mb-0">
+                        Scannez toutes les étiquettes reçues : chaque ajout ira dans le panier d'ajout de stock.
+                        Rien n'est intégré définitivement tant que vous n'avez pas validé le panier.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        {# Colonne droite : panier d'ajout de stock #}
+        <div class="col-12 col-lg-7">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body d-flex flex-column">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h2 class="h5 mb-0">Panier d'ajout de stock</h2>
+                        {% if total_quantity is defined and total_quantity > 0 %}
+                            <span class="badge bg-secondary">
+                                {{ total_lines|default(0) }} ligne{{ (total_lines|default(0)) > 1 ? 's' : '' }} —
+                                {{ total_quantity }} pièce{{ total_quantity > 1 ? 's' : '' }}
+                            </span>
+                        {% endif %}
+                    </div>
+
+                    {% if cart is not defined or cart is empty %}
+                        <p class="text-muted mb-0">
+                            Aucun produit dans le panier d'ajout de stock pour l'instant.
+                            Scannez ou saisissez une référence puis ajoutez-la avec la taille et la quantité souhaitées.
+                        </p>
+                    {% else %}
+                        <div class="table-responsive mb-3">
+                            <table class="table align-middle mb-0">
+                                <thead>
+                                <tr>
+                                    <th>Référence</th>
+                                    <th class="d-none d-md-table-cell">Produit</th>
+                                    <th>Taille</th>
+                                    <th class="text-end">Qté</th>
+                                    <th class="text-end"></th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for line in cart %}
+                                    <tr>
+                                        <td class="small">
+                                            <div class="fw-semibold">{{ line.reference }}</div>
+                                        </td>
+                                        <td class="small d-none d-md-table-cell">
+                                            {{ line.product_name }}
+                                        </td>
+                                        <td>{{ line.size_name }}</td>
+                                        <td class="text-end">
+                                            {{ line.quantity }}
+                                        </td>
+                                        <td class="text-end">
+                                            <form
+                                                method="post"
+                                                action="{{ path('user_add_stock_decrement_line', { index: loop.index0 }) }}"
+                                                class="d-inline"
+                                            >
+                                                <button type="submit" class="btn btn-sm btn-outline-secondary me-1">
+                                                    −
+                                                </button>
+                                            </form>
+                                            <form
+                                                method="post"
+                                                action="{{ path('user_add_stock_remove_line', { index: loop.index0 }) }}"
+                                                class="d-inline"
+                                            >
+                                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                    ✕
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <form method="post" action="{{ path('user_add_stock_validate') }}" class="mt-auto">
+                            <button type="submit" class="btn btn-success btn-lg w-100">
+                                Valider les ajouts dans le stock du magasin
+                            </button>
+                        </form>
+
+                        <p class="text-muted small mt-3 mb-0">
+                            En validant, toutes les lignes du panier seront intégrées dans le stock du magasin
+                            et un mouvement d'entrée sera enregistré pour chaque référence et taille.
+                        </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,176 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ page_title ?? 'Consultation du stock' }}{% endblock %}
+
+{% block body %}
+<div class="container py-4">
+
+    {# Header : titre + magasin + retour dashboard #}
+    <div class="d-flex justify-content-between align-items-start mb-4">
+        <div>
+            <h1 class="h3 mb-1">{{ page_title ?? 'Consultation du stock' }}</h1>
+            {% if current_location is defined and current_location %}
+                <p class="text-muted mb-1 small">
+                    Magasin actuel :
+                    <strong>{{ current_location.name }}</strong>
+                    <span class="text-muted">({{ current_location.code }})</span>
+                </p>
+            {% endif %}
+            <p class="text-muted mb-0 small">
+                Recherchez une référence pour voir les stocks par taille dans tous les magasins.
+            </p>
+        </div>
+        <a href="{{ path('user_dashboard') }}" class="btn btn-outline-secondary btn-sm">
+            ← Accueil vendeuse
+        </a>
+    </div>
+
+    {# Messages flash #}
+    {% for label, messages in app.flashes %}
+        {% for message in messages %}
+            <div class="alert alert-{{ label }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>
+            </div>
+        {% endfor %}
+    {% endfor %}
+
+    <div class="row">
+        <div class="col-12 col-lg-8">
+
+            {# Formulaire de recherche #}
+            <form method="get" action="{{ path('user_check_stock') }}" class="card border-0 shadow-sm mb-3">
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="reference" class="form-label fw-semibold">Référence produit</label>
+                        <input
+                            type="text"
+                            id="check_reference"
+                            name="reference"
+                            class="form-control"
+                            autocomplete="off"
+                            value="{{ searched_reference ?? '' }}"
+                            placeholder="Ex : ZARA_Ete2025_Robe_bleue"
+                            data-autocomplete="product-reference"
+                            data-autocomplete-url="{{ path('autocomplete_product_reference') }}"
+                        >
+                        <div class="form-text">
+                            Vous pouvez scanner une étiquette ou saisir la référence manuellement.
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-end">
+                        <button type="submit" class="btn btn-primary">
+                            Rechercher
+                        </button>
+                    </div>
+                </div>
+            </form>
+
+            <hr class="my-4">
+
+            {# Résultats #}
+            {% if searched_reference is not defined or searched_reference is empty %}
+                <p class="text-muted mb-0">
+                    Saisissez une référence puis appuyez sur « Rechercher » pour afficher les stocks.
+                </p>
+            {% else %}
+                {% if product is null %}
+                    <p class="text-muted mb-0">
+                        Aucun produit trouvé pour la référence
+                        <strong>{{ searched_reference }}</strong>.
+                    </p>
+                {% elseif results_by_location is empty %}
+                    <p class="text-muted mb-0">
+                        Le produit <strong>{{ product.reference }}</strong> existe, mais aucun stock
+                        n'a été trouvé dans les magasins.
+                    </p>
+                {% else %}
+                    <h3 class="h6 mb-3">
+                        Résultats pour : <strong>{{ product.reference }}</strong>
+                        {% if product.name is not empty %} — {{ product.name }}{% endif %}
+                    </h3>
+
+                    <div class="row g-3">
+                        {% for location in results_by_location %}
+                            <div class="col-12 col-md-6">
+                                <div class="card border-0 shadow-sm h-100">
+                                    <div class="card-body">
+                                        <h4 class="h6 mb-3">
+                                            {{ location.location_name }}
+                                            <span class="text-muted">({{ location.location_code }})</span>
+                                        </h4>
+
+                                        <div class="table-responsive">
+                                            <table class="table table-sm align-middle mb-0">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Taille</th>
+                                                        <th class="text-end">Stock</th>
+                                                        <th class="text-end">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for row in location.rows %}
+                                                        <tr>
+                                                            <td>{{ row.size_name }}</td>
+                                                            <td class="text-end">
+                                                                {% set q = row.quantity %}
+                                                                {% if q == 0 %}
+                                                                    <span class="badge bg-danger">0</span>
+                                                                {% elseif q == 1 %}
+                                                                    <span class="badge bg-warning text-dark">1</span>
+                                                                {% else %}
+                                                                    <span class="badge bg-success">{{ q }}</span>
+                                                                {% endif %}
+                                                            </td>
+                                                            <td class="text-end">
+                                                                {% set is_other_location = current_location
+                                                                    and location.location_id is defined
+                                                                    and location.location_id != current_location.id
+                                                                %}
+                                                                {% if is_other_location and row.quantity > 0 %}
+                                                                    <div class="d-flex flex-column gap-1 align-items-end">
+
+                                                                        {# Bouton : Réserver dans ce magasin #}
+                                                                        <form method="post" action="{{ path('user_check_stock_reservation') }}">
+                                                                            <input type="hidden" name="product_id" value="{{ product.id }}">
+                                                                            <input type="hidden" name="size_id" value="{{ row.size_id }}">
+                                                                            <input type="hidden" name="location_id" value="{{ location.location_id }}">
+                                                                            <input type="hidden" name="reference" value="{{ product.reference }}">
+                                                                            <button type="submit" class="btn btn-sm btn-outline-primary">
+                                                                                Réserver dans ce magasin
+                                                                            </button>
+                                                                        </form>
+
+                                                                        {# Bouton : Demander un transfert #}
+                                                                        <form method="post" action="{{ path('user_check_stock_transfer_request') }}">
+                                                                            <input type="hidden" name="product_id" value="{{ product.id }}">
+                                                                            <input type="hidden" name="size_id" value="{{ row.size_id }}">
+                                                                            <input type="hidden" name="location_id" value="{{ location.location_id }}">
+                                                                            <input type="hidden" name="reference" value="{{ product.reference }}">
+                                                                            <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                                                                Demander un transfert
+                                                                            </button>
+                                                                        </form>
+                                                                    </div>
+                                                                {% else %}
+                                                                    <span class="text-muted small">—</span>
+                                                                {% endif %}
+                                                            </td>
+                                                        </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

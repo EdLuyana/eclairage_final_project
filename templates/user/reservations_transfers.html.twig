@@ -1,0 +1,206 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ page_title ?? 'Réservations & transferts' }}{% endblock %}
+
+{% block body %}
+<div class="container py-4">
+
+    {# Header : titre + magasin + retour dashboard #}
+    <div class="d-flex justify-content-between align-items-start mb-4">
+        <div>
+            <h1 class="h3 mb-1">{{ page_title }}</h1>
+            {% if current_location is defined and current_location %}
+                <p class="text-muted mb-1 small">
+                    Magasin actuel :
+                    <strong>{{ current_location.name }}</strong>
+                    <span class="text-muted">({{ current_location.code }})</span>
+                </p>
+            {% endif %}
+            <a href="{{ path('user_check_stock') }}" class="link-secondary small">
+                ← Retour à la consultation de stock
+            </a>
+        </div>
+
+        <div>
+            <a href="{{ path('user_dashboard') }}" class="btn btn-outline-secondary btn-sm me-2">
+                Accueil vendeuse
+            </a>
+            <a href="{{ path('app_logout') }}" class="btn btn-outline-danger btn-sm">
+                Déconnexion
+            </a>
+        </div>
+    </div>
+
+    {# Messages flash #}
+    {% for label, messages in app.flashes %}
+        {% for message in messages %}
+            <div class="alert alert-{{ label }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>
+            </div>
+        {% endfor %}
+    {% endfor %}
+
+    <div class="row g-4">
+
+        {# Bloc réservations #}
+        <div class="col-12 col-lg-6">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Réservations à préparer</h2>
+
+                    {% if reservations is empty %}
+                        <p class="text-muted small mb-0">
+                            Aucune réservation en attente pour ce magasin.
+                        </p>
+                    {% else %}
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Produit</th>
+                                        <th>Taille</th>
+                                        <th>Qté</th>
+                                        <th>Client</th>
+                                        <th>Magasin demandeur</th>
+                                        <th class="text-end">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for res in reservations %}
+                                        <tr>
+                                            <td>
+                                                {{ res.product.reference }}
+                                                {% if res.product.name %}
+                                                    <br><span class="text-muted small">{{ res.product.name }}</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ res.size.name }}</td>
+                                            <td>{{ res.quantity }}</td>
+                                            <td class="small">
+                                                {% if res.customerName %}
+                                                    {{ res.customerName }}<br>
+                                                {% endif %}
+                                                {% if res.customerPhone %}
+                                                    <span class="text-muted">{{ res.customerPhone }}</span>
+                                                {% endif %}
+                                            </td>
+                                            <td class="small">
+                                                {{ res.requestedByLocation ? res.requestedByLocation.name : '-' }}
+                                            </td>
+                                            <td class="text-end">
+                                                <div class="d-flex flex-column gap-1 align-items-end">
+                                                    {% if res.status == 'PENDING' %}
+                                                        <form method="post" action="{{ path('user_reservation_confirm', {id: res.id}) }}">
+                                                            <button type="submit" class="btn btn-sm btn-outline-success">
+                                                                Produit mis de côté
+                                                            </button>
+                                                        </form>
+                                                    {% endif %}
+
+                                                    {% if res.status in ['PENDING', 'CONFIRMED'] %}
+                                                        <form method="post" action="{{ path('user_reservation_cancel', {id: res.id}) }}">
+                                                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                                Annuler
+                                                            </button>
+                                                        </form>
+                                                    {% else %}
+                                                        <span class="badge bg-secondary small">
+                                                            {{ res.status }}
+                                                        </span>
+                                                    {% endif %}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {# Bloc transferts #}
+        <div class="col-12 col-lg-6">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Produits à transférer</h2>
+
+                    {% if transfer_requests is empty %}
+                        <p class="text-muted small mb-0">
+                            Aucun transfert en attente depuis ce magasin.
+                        </p>
+                    {% else %}
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Produit</th>
+                                        <th>Taille</th>
+                                        <th>Qté</th>
+                                        <th>Vers</th>
+                                        <th>Client</th>
+                                        <th class="text-end">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for tr in transfer_requests %}
+                                        <tr>
+                                            <td>
+                                                {{ tr.product.reference }}
+                                                {% if tr.product.name %}
+                                                    <br><span class="text-muted small">{{ tr.product.name }}</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ tr.size.name }}</td>
+                                            <td>{{ tr.quantity }}</td>
+                                            <td class="small">
+                                                {{ tr.toLocation ? tr.toLocation.name : '-' }}
+                                            </td>
+                                            <td class="small">
+                                                {% if tr.customerName %}
+                                                    {{ tr.customerName }}<br>
+                                                {% endif %}
+                                                {% if tr.customerPhone %}
+                                                    <span class="text-muted">{{ tr.customerPhone }}</span>
+                                                {% endif %}
+                                            </td>
+                                            <td class="text-end">
+                                                <div class="d-flex flex-column gap-1 align-items-end">
+                                                    {% if tr.status == 'REQUESTED' %}
+                                                        <form method="post" action="{{ path('user_transfer_prepare', {id: tr.id}) }}">
+                                                            <button type="submit" class="btn btn-sm btn-outline-success">
+                                                                Préparer / scanner
+                                                            </button>
+                                                        </form>
+
+                                                        <form method="post" action="{{ path('user_transfer_cancel', {id: tr.id}) }}">
+                                                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                                Annuler
+                                                            </button>
+                                                        </form>
+                                                    {% elseif tr.status == 'PREPARED' %}
+                                                        <span class="badge bg-info text-dark small">
+                                                            Préparé — en attente de réception
+                                                        </span>
+                                                    {% else %}
+                                                        <span class="badge bg-secondary small">
+                                                            {{ tr.status }}
+                                                        </span>
+                                                    {% endif %}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
