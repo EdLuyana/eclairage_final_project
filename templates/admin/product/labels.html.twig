@@ -1,0 +1,102 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ page_title ?? 'Étiquettes produit' }}{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h1 class="h4 mb-0">{{ page_title }}</h1>
+            <div class="text-muted small">
+                {{ product.reference }} · {{ product.name }} · {{ product.color.name ?? product.color }}
+            </div>
+        </div>
+        <a href="{{ path('admin_product_index') }}" class="btn btn-outline-secondary btn-sm">
+            ← Retour produits
+        </a>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h2 class="h6 mb-3">Quantités d'étiquettes par taille</h2>
+
+                    {% if sizes is empty %}
+                        <div class="alert alert-warning mb-0">
+                            Aucune taille n'est configurée pour ce produit. Vous ne pouvez pas générer d'étiquettes.
+                        </div>
+                    {% else %}
+                        <form method="post" action="{{ path('admin_product_labels', {id: product.id}) }}">
+                            <input type="hidden" name="_token" value="{{ csrf_token('generate_labels_' ~ product.id) }}"/>
+
+                            <div class="table-responsive mb-3">
+                                <table class="table table-sm align-middle mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 40%">Taille</th>
+                                            <th style="width: 60%">Nombre d'étiquettes</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for size in sizes %}
+                                            <tr>
+                                                <td>
+                                                    <strong>{{ size.label }}</strong>
+                                                </td>
+                                                <td>
+                                                    <input
+                                                        type="number"
+                                                        name="labels[{{ size.id }}]"
+                                                        class="form-control form-control-sm"
+                                                        min="0"
+                                                        value="0"
+                                                    >
+                                                </td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div class="text-muted small">
+                                    Les étiquettes seront imprimées sur une feuille A4 (4 colonnes × 14 lignes, 56 étiquettes par page).
+                                </div>
+                                <button type="submit" class="btn btn-primary btn-sm">
+                                    Générer le PDF
+                                </button>
+                            </div>
+                        </form>
+                    {% endif %}
+                </div>
+            </div>
+
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h2 class="h6 mb-3">Rappel</h2>
+                    <p class="small mb-2">
+                        Chaque étiquette contient :
+                    </p>
+                    <ul class="small mb-2">
+                        <li>La référence du produit</li>
+                        <li>Le code-barres DataMatrix (<code>réf-taille</code>)</li>
+                        <li>La taille</li>
+                        <li>Le prix (en gras)</li>
+                    </ul>
+                    <p class="small mb-0">
+                        Les vendeuses ajoutent ensuite le stock en scannant ces étiquettes
+                        dans leur magasin. L'étiquette ne dépend plus d'un magasin précis.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

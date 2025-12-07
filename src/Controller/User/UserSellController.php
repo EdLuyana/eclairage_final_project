@@ -6,6 +6,7 @@ use App\Entity\Product;
 use App\Entity\Size;
 use App\Entity\Stock;
 use App\Entity\StockMovement;
+use App\Repository\SaleModeRepository;
 use App\Service\CurrentLocationService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -18,45 +19,68 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 #[IsGranted('ROLE_USER')]
 class UserSellController extends AbstractController
 {
-    public const CART_SESSION_KEY      = 'sell_cart';
-    public const CART_DISCOUNT_KEY     = 'sell_cart_discount';
-    public const CART_VOUCHER_KEY      = 'sell_cart_voucher'; // 💳 bon d'achat
+    public const CART_SESSION_KEY        = 'sell_cart';
+    /**
+     * Clé de session pour la remise panier (0 ou 10 %).
+     */
+    public const CART_BASKET_DISCOUNT_KEY = 'sell_cart_discount';
+    /**
+     * Clé de session pour le montant payé via bon d'achat (en euros entiers).
+     */
+    public const CART_VOUCHER_KEY        = 'sell_cart_voucher';
 
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly CurrentLocationService $currentLocationService,
+        private readonly SaleModeRepository $saleModeRepository,
     ) {
     }
 
     /**
-     * Affichage de la page de vente + panier actuel
+     * Affichage de la page de vente + panier actuel.
      */
     #[Route('/user/sell', name: 'user_sell', methods: ['GET'])]
     public function index(Request $request): Response
     {
         $location = $this->currentLocationService->getLocation();
-
         if (!$location) {
             return $this->redirectToRoute('user_select_location');
         }
 
-        $session         = $request->getSession();
-        $cart            = $session->get(self::CART_SESSION_KEY, []);
-        $discountApplied = (bool) $session->get(self::CART_DISCOUNT_KEY, false);
+        $session = $request->getSession();
+        $cart    = $session->get(self::CART_SESSION_KEY, []);
 
-        // Si le panier est vide, on remet le bon d'achat à 0 pour éviter les incohérences
+        // Lecture de la remise panier (héritage possible d'une ancienne version booléenne)
+        $rawBasketDiscount = $session->get(self::CART_BASKET_DISCOUNT_KEY, 0);
+        if ($rawBasketDiscount === true) {
+            $rawBasketDiscount = 10;
+        }
+        $basketDiscountPercent = (int) $rawBasketDiscount;
+        // Dans notre logique : seulement 0 ou 10 %
+        if ($basketDiscountPercent !== 10) {
+            $basketDiscountPercent = 0;
+        }
+
+        // Bon d'achat
         if (empty($cart)) {
+            // Panier vide = pas de bon d'achat
             $session->remove(self::CART_VOUCHER_KEY);
             $voucherAmount = 0;
         } else {
-            // On stocke le bon d'achat en euros entiers
             $voucherAmount = (int) $session->get(self::CART_VOUCHER_KEY, 0);
         }
 
-        $totals       = $this->calculateTotals($cart, $discountApplied);
-        $basketTotal  = $totals['total_after_discount'];
+        // SaleMode (pour savoir si les remises par article sont actives)
+        $saleMode       = $this->saleModeRepository->find(1);
+        $saleModeActive = $saleMode?->isDiscountEnabled() ?? false;
 
-        // On s'assure que le bon d'achat ne dépasse pas le total
+        // Totaux prenant en compte :
+        // - remises par article (si SaleMode actif)
+        // - remise panier (0 ou 10 %)
+        $totals      = $this->calculateTotals($cart, $basketDiscountPercent, $saleModeActive);
+        $basketTotal = $totals['total_after_discount'];
+
+        // On s'assure que le bon d'achat ne dépasse pas le total panier
         if ($voucherAmount < 0) {
             $voucherAmount = 0;
         }
@@ -70,19 +94,19 @@ class UserSellController extends AbstractController
         $session->set(self::CART_VOUCHER_KEY, $voucherAmount);
 
         return $this->render('user/sell.html.twig', [
-            'page_title'       => 'Vente',
-            'current_location' => $location,
-            'cart'             => $cart,
-            'discount_applied' => $discountApplied,
-            'totals'           => $totals,
-            'voucher_amount'   => $voucherAmount,
-            'cash_amount'      => $cashAmount,
+            'page_title'             => 'Vente',
+            'current_location'       => $location,
+            'cart'                   => $cart,
+            'totals'                 => $totals,
+            'voucher_amount'         => $voucherAmount,
+            'cash_amount'            => $cashAmount,
+            'sale_mode_enabled'      => $saleModeActive,
+            'basket_discount_percent'=> $basketDiscountPercent,
         ]);
     }
 
     /**
-     * Récupère les tailles disponibles pour une référence donnée
-     * (endpoint JSON pour futur JS/autocomplétion)
+     * Endpoint JSON pour récupérer les tailles disponibles pour une référence dans le magasin courant.
      */
     #[Route('/user/sell/get-sizes', name: 'user_sell_get_sizes', methods: ['GET'])]
     public function getSizesForReference(Request $request): JsonResponse
@@ -112,11 +136,11 @@ class UserSellController extends AbstractController
         if (!$product) {
             return new JsonResponse([
                 'success' => false,
-                'message' => 'Produit introuvable pour cette référence.',
+                'message' => sprintf('Aucun produit trouvé pour la référence "%s".', $reference),
             ], 404);
         }
 
-        // On récupère tous les stocks du produit dans le magasin courant
+        /** @var Stock[] $stocks */
         $stocks = $this->em->getRepository(Stock::class)->findBy([
             'product'  => $product,
             'location' => $location,
@@ -146,7 +170,7 @@ class UserSellController extends AbstractController
 
     /**
      * Ajout d'une ligne au panier.
-     * On attend : reference, size_id, quantity
+     * On attend : reference, size_id, quantity.
      */
     #[Route('/user/sell/add-line', name: 'user_sell_add_line', methods: ['POST'])]
     public function addLine(Request $request): Response
@@ -162,8 +186,8 @@ class UserSellController extends AbstractController
         $sizeId    = (int) $request->request->get('size_id', 0);
         $quantity  = (int) $request->request->get('quantity', 1);
 
-        if ($reference === '' || $sizeId <= 0 || $quantity <= 0) {
-            $this->addFlash('danger', 'Données incomplètes pour ajouter au panier.');
+        if ($reference === '' || $sizeId <= 0) {
+            $this->addFlash('danger', 'Référence ou taille manquante.');
             return $this->redirectToRoute('user_sell');
         }
 
@@ -172,7 +196,10 @@ class UserSellController extends AbstractController
             ->findOneBy(['reference' => $reference]);
 
         if (!$product) {
-            $this->addFlash('danger', 'Produit introuvable pour cette référence.');
+            $this->addFlash('danger', sprintf(
+                'Aucun produit trouvé pour la référence "%s".',
+                $reference
+            ));
             return $this->redirectToRoute('user_sell');
         }
 
@@ -204,90 +231,165 @@ class UserSellController extends AbstractController
             return $this->redirectToRoute('user_sell');
         }
 
-        // Récupération/initialisation du panier
         $session = $request->getSession();
-        $cart = $session->get(self::CART_SESSION_KEY, []);
+        $cart    = $session->get(self::CART_SESSION_KEY, []);
 
-        // Prix unitaire : on part du prix produit actuel
-        $unitPrice = (float) $product->getPrice();
+        $lineKey = $product->getId() . '_' . $size->getId();
 
-        // Fusion si même produit + même taille déjà dans le panier
-        $lineFound = false;
-        foreach ($cart as &$line) {
-            if ($line['product_id'] === $product->getId() && $line['size_id'] === $size->getId()) {
-                $newQuantity = $line['quantity'] + $quantity;
-
-                if ($newQuantity > $stock->getQuantity()) {
-                    $this->addFlash('danger', sprintf(
-                        'Impossible d’ajouter %d : il ne reste que %d en stock pour cette taille.',
-                        $quantity,
-                        $stock->getQuantity()
-                    ));
-                    return $this->redirectToRoute('user_sell');
-                }
-
-                $line['quantity'] = $newQuantity;
-                $lineFound = true;
-                break;
+        if (isset($cart[$lineKey])) {
+            $newQty = $cart[$lineKey]['quantity'] + $quantity;
+            if ($newQty > $stock->getQuantity()) {
+                $this->addFlash('danger', sprintf(
+                    'Stock insuffisant : vous essayez d\'ajouter %d au total, mais il ne reste que %d.',
+                    $newQty,
+                    $stock->getQuantity()
+                ));
+                return $this->redirectToRoute('user_sell');
             }
-        }
-        unset($line);
-
-        if (!$lineFound) {
-            $cart[] = [
-                'product_id'         => $product->getId(),
-                'product_reference'  => $product->getReference(),
-                'product_name'       => $product->getName(),
-                'size_id'            => $size->getId(),
-                'size_name'          => $size->getName(),
-                'quantity'           => $quantity,
-                'unit_price'         => $unitPrice,
+            $cart[$lineKey]['quantity'] = $newQty;
+        } else {
+            $cart[$lineKey] = [
+                'product_id'       => $product->getId(),
+                'size_id'          => $size->getId(),
+                'reference'        => $product->getReference(),
+                'name'             => $product->getName(),
+                'size_name'        => $size->getName(),
+                'quantity'         => $quantity,
+                'unit_price'       => $product->getPrice(),
+                'discount_percent' => 0, // remise article (10–50 %) par défaut à 0 %
             ];
         }
 
         $session->set(self::CART_SESSION_KEY, $cart);
 
-        $this->addFlash('success', 'Article ajouté au panier.');
+        $this->addFlash('success', sprintf(
+            '%d x %s (taille %s) ajouté(s) au panier.',
+            $quantity,
+            $product->getName(),
+            $size->getName()
+        ));
 
         return $this->redirectToRoute('user_sell');
     }
 
     /**
-     * Supprimer une ligne du panier (par index)
+     * Définir la remise sur une ligne du panier (10–50 %, seulement si SaleMode actif).
      */
-    #[Route('/user/sell/remove-line/{index}', name: 'user_sell_remove_line', methods: ['POST'])]
-    public function removeLine(Request $request, int $index): Response
+    #[Route('/user/sell/line-discount/{lineKey}', name: 'user_sell_set_line_discount', methods: ['POST'])]
+    public function setLineDiscount(Request $request, string $lineKey): Response
     {
         $session = $request->getSession();
-        $cart = $session->get(self::CART_SESSION_KEY, []);
+        $cart    = $session->get(self::CART_SESSION_KEY, []);
 
-        if (isset($cart[$index])) {
-            unset($cart[$index]);
-            $cart = array_values($cart);
+        if (!isset($cart[$lineKey])) {
+            $this->addFlash('danger', 'Ligne introuvable dans le panier.');
+            return $this->redirectToRoute('user_sell');
+        }
+
+        $saleMode       = $this->saleModeRepository->find(1);
+        $saleModeActive = $saleMode?->isDiscountEnabled() ?? false;
+
+        if (!$saleModeActive) {
+            // On force la remise à 0 par sécurité
+            $cart[$lineKey]['discount_percent'] = 0;
             $session->set(self::CART_SESSION_KEY, $cart);
 
-            $this->addFlash('success', 'Ligne supprimée du panier.');
+            $this->addFlash(
+                'danger',
+                'Le mode soldes est désactivé : impossible d\'appliquer une remise par article.'
+            );
+            return $this->redirectToRoute('user_sell');
+        }
+
+        $raw     = $request->request->get('discount_percent', '0');
+        $percent = ctype_digit((string) $raw) ? (int) $raw : 0;
+
+        $allowed = [0, 10, 20, 30, 40, 50];
+        if (!in_array($percent, $allowed, true)) {
+            $this->addFlash('danger', 'Remise article invalide.');
+            return $this->redirectToRoute('user_sell');
+        }
+
+        $cart[$lineKey]['discount_percent'] = $percent;
+        $session->set(self::CART_SESSION_KEY, $cart);
+
+        if ($percent === 0) {
+            $this->addFlash('info', 'Aucune remise appliquée sur cet article.');
+        } else {
+            $this->addFlash('success', sprintf(
+                'Remise de %d %% appliquée sur cet article.',
+                $percent
+            ));
         }
 
         return $this->redirectToRoute('user_sell');
     }
 
     /**
-     * Appliquer / retirer la réduction de 10% sur le panier.
-     * On stocke juste un booléen en session.
+     * Suppression d'une ligne du panier.
      */
-    #[Route('/user/sell/toggle-discount', name: 'user_sell_toggle_discount', methods: ['POST'])]
-    public function toggleDiscount(Request $request): Response
+    #[Route('/user/sell/remove-line/{lineKey}', name: 'user_sell_remove_line', methods: ['POST'])]
+    public function removeLine(Request $request, string $lineKey): Response
     {
         $session = $request->getSession();
+        $cart    = $session->get(self::CART_SESSION_KEY, []);
 
-        $current = (bool) $session->get(self::CART_DISCOUNT_KEY, false);
-        $session->set(self::CART_DISCOUNT_KEY, !$current);
+        if (isset($cart[$lineKey])) {
+            unset($cart[$lineKey]);
+            $session->set(self::CART_SESSION_KEY, $cart);
 
-        if ($current) {
-            $this->addFlash('info', 'Réduction 10% retirée du panier.');
+            $this->addFlash('info', 'Ligne retirée du panier.');
+        }
+
+        return $this->redirectToRoute('user_sell');
+    }
+
+    /**
+     * Vider complètement le panier (articles + remises + bon d'achat).
+     */
+    #[Route('/user/sell/clear-cart', name: 'user_sell_clear_cart', methods: ['POST'])]
+    public function clearCart(Request $request): Response
+    {
+        $session = $request->getSession();
+        $session->remove(self::CART_SESSION_KEY);
+        $session->remove(self::CART_BASKET_DISCOUNT_KEY);
+        $session->remove(self::CART_VOUCHER_KEY);
+
+        $this->addFlash('info', 'Panier vidé.');
+
+        return $this->redirectToRoute('user_sell');
+    }
+
+    /**
+     * Définir la remise panier (geste co).
+     * Logique : 0 ou 10 % uniquement, toujours disponible (hors SaleMode).
+     */
+    #[Route('/user/sell/toggle-discount', name: 'user_sell_toggle_discount', methods: ['POST'])]
+    public function toggleBasketDiscount(Request $request): Response
+    {
+        $session = $request->getSession();
+        $cart    = $session->get(self::CART_SESSION_KEY, []);
+
+        if (empty($cart)) {
+            $this->addFlash('warning', 'Le panier est vide : aucune réduction à appliquer.');
+            return $this->redirectToRoute('user_sell');
+        }
+
+        $raw     = $request->request->get('discount_percent', '0');
+        $percent = ctype_digit((string) $raw) ? (int) $raw : 0;
+
+        // Dans ta logique : 0 ou 10 uniquement
+        if (!in_array($percent, [0, 10], true)) {
+            $this->addFlash('danger', 'Remise panier invalide.');
+            return $this->redirectToRoute('user_sell');
+        }
+
+        $session->set(self::CART_BASKET_DISCOUNT_KEY, $percent);
+
+        if ($percent === 0) {
+            $this->addFlash('info', 'Aucune remise panier appliquée.');
         } else {
-            $this->addFlash('success', 'Réduction 10% appliquée au panier.');
+            $this->addFlash('success', 'Remise de 10 % appliquée sur le panier.');
         }
 
         return $this->redirectToRoute('user_sell');
@@ -299,9 +401,8 @@ class UserSellController extends AbstractController
     #[Route('/user/sell/set-voucher', name: 'user_sell_set_voucher', methods: ['POST'])]
     public function setVoucher(Request $request): Response
     {
-        $session         = $request->getSession();
-        $cart            = $session->get(self::CART_SESSION_KEY, []);
-        $discountApplied = (bool) $session->get(self::CART_DISCOUNT_KEY, false);
+        $session = $request->getSession();
+        $cart    = $session->get(self::CART_SESSION_KEY, []);
 
         if (empty($cart)) {
             $session->remove(self::CART_VOUCHER_KEY);
@@ -309,52 +410,72 @@ class UserSellController extends AbstractController
             return $this->redirectToRoute('user_sell');
         }
 
-        // On récupère le montant saisi (on accepte la virgule comme séparateur)
+        // Remise panier en % (0 ou 10)
+        $rawBasketDiscount = $session->get(self::CART_BASKET_DISCOUNT_KEY, 0);
+        if ($rawBasketDiscount === true) {
+            $rawBasketDiscount = 10;
+        }
+        $basketDiscountPercent = (int) $rawBasketDiscount;
+        if ($basketDiscountPercent !== 10) {
+            $basketDiscountPercent = 0;
+        }
+
+        // SaleMode (pour remises article)
+        $saleMode       = $this->saleModeRepository->find(1);
+        $saleModeActive = $saleMode?->isDiscountEnabled() ?? false;
+
+        // On récupère le montant saisi (on accepte la virgule)
         $raw = (string) $request->request->get('voucher_amount', '0');
         $raw = str_replace(',', '.', $raw);
 
-        // On force en euros entiers
-        $voucherAmount = (int) round((float) $raw);
-
-        if ($voucherAmount < 0) {
-            $voucherAmount = 0;
+        if (!is_numeric($raw)) {
+            $this->addFlash('danger', 'Montant de bon d\'achat invalide.');
+            return $this->redirectToRoute('user_sell');
         }
 
-        $totals      = $this->calculateTotals($cart, $discountApplied);
+        $voucherAmount = (float) $raw;
+        if ($voucherAmount < 0) {
+            $voucherAmount = 0.0;
+        }
+
+        // Totaux (après remises article + remise panier)
+        $totals      = $this->calculateTotals($cart, $basketDiscountPercent, $saleModeActive);
         $basketTotal = $totals['total_after_discount'];
 
+        // Le bon d'achat ne doit pas dépasser le total
         if ($voucherAmount > $basketTotal) {
-            $voucherAmount = (int) $basketTotal;
+            $voucherAmount = $basketTotal;
         }
 
-        $session->set(self::CART_VOUCHER_KEY, $voucherAmount);
+        // On stocke en euros entiers
+        $voucherInt = (int) round($voucherAmount);
+        $session->set(self::CART_VOUCHER_KEY, $voucherInt);
 
-        if ($voucherAmount > 0) {
-            $this->addFlash('success', sprintf(
-                'Bon d\'achat de %d € appliqué sur cette vente.',
-                $voucherAmount
-            ));
-        } else {
-            $this->addFlash('info', 'Aucun bon d\'achat appliqué sur cette vente.');
-        }
+        $cashAmount = max(0.0, $basketTotal - $voucherInt);
+
+        $this->addFlash('success', sprintf(
+            'Bon d\'achat de %d € appliqué. Total après remises : %.2f €, montant à payer : %.2f €.',
+            $voucherInt,
+            $basketTotal,
+            $cashAmount
+        ));
 
         return $this->redirectToRoute('user_sell');
     }
 
     /**
      * Validation de la vente :
-     * - vérifie à nouveau les stocks
+     * - vérifie les stocks
      * - décrémente les stocks
      * - crée les StockMovement de type SALE
-     * - applique la réduction si activée
-     * - prend en compte le bon d'achat pour le CA
+     * - applique les remises article + remise panier
+     * - prend en compte le bon d'achat pour le commentaire
      * - vide le panier
      */
     #[Route('/user/sell/validate', name: 'user_sell_validate', methods: ['POST'])]
     public function validateSale(Request $request): Response
     {
         $location = $this->currentLocationService->getLocation();
-
         if (!$location) {
             $this->addFlash('danger', 'Aucun magasin sélectionné.');
             return $this->redirectToRoute('user_select_location');
@@ -366,22 +487,37 @@ class UserSellController extends AbstractController
             return $this->redirectToRoute('app_login');
         }
 
-        $session         = $request->getSession();
-        $cart            = $session->get(self::CART_SESSION_KEY, []);
-        $discountApplied = (bool) $session->get(self::CART_DISCOUNT_KEY, false);
-        $voucherAmount   = (int) $session->get(self::CART_VOUCHER_KEY, 0);
+        $session = $request->getSession();
+        $cart    = $session->get(self::CART_SESSION_KEY, []);
 
         if (empty($cart)) {
             $this->addFlash('warning', 'Le panier est vide.');
             return $this->redirectToRoute('user_sell');
         }
 
-        // Recalcul des totaux (avec ou sans réduction)
-        $totals       = $this->calculateTotals($cart, $discountApplied);
-        $basketTotal  = $totals['total_after_discount']; // montant final arrondi à l’euro sup.
-        $discountRate = $totals['discount_rate'];
+        // Remise panier (0 ou 10 %)
+        $rawBasketDiscount = $session->get(self::CART_BASKET_DISCOUNT_KEY, 0);
+        if ($rawBasketDiscount === true) {
+            $rawBasketDiscount = 10;
+        }
+        $basketDiscountPercent = (int) $rawBasketDiscount;
+        if ($basketDiscountPercent !== 10) {
+            $basketDiscountPercent = 0;
+        }
 
-        // On s'assure une dernière fois que le bon d'achat est cohérent
+        // Bon d'achat
+        $voucherAmount = (int) $session->get(self::CART_VOUCHER_KEY, 0);
+
+        // SaleMode pour savoir si les remises article sont actives au moment de la vente
+        $saleMode       = $this->saleModeRepository->find(1);
+        $saleModeActive = $saleMode?->isDiscountEnabled() ?? false;
+
+        // Totaux (remises article + remise panier)
+        $totals       = $this->calculateTotals($cart, $basketDiscountPercent, $saleModeActive);
+        $basketTotal  = $totals['total_after_discount'];
+        $basketRate   = $basketDiscountPercent === 10 ? 0.10 : 0.0;
+
+        // Cohérence du bon d'achat
         if ($voucherAmount < 0) {
             $voucherAmount = 0;
         }
@@ -391,15 +527,15 @@ class UserSellController extends AbstractController
 
         $cashAmount = max(0.0, $basketTotal - (float) $voucherAmount);
 
-        // Vérification des stocks
+        // 1ère passe : vérification de tous les stocks
         foreach ($cart as $line) {
             /** @var Product|null $product */
-            $product = $this->em->getRepository(Product::class)->find($line['product_id']);
+            $product = $this->em->getRepository(Product::class)->find($line['product_id'] ?? null);
             /** @var Size|null $size */
-            $size = $this->em->getRepository(Size::class)->find($line['size_id']);
+            $size = $this->em->getRepository(Size::class)->find($line['size_id'] ?? null);
 
             if (!$product || !$size) {
-                $this->addFlash('danger', 'Erreur interne : produit ou taille introuvable.');
+                $this->addFlash('danger', 'Produit ou taille introuvable. Vente annulée.');
                 return $this->redirectToRoute('user_sell');
             }
 
@@ -410,7 +546,7 @@ class UserSellController extends AbstractController
                 'location' => $location,
             ]);
 
-            if (!$stock || $stock->getQuantity() < $line['quantity']) {
+            if (!$stock || $stock->getQuantity() < (int) ($line['quantity'] ?? 0)) {
                 $this->addFlash('danger', sprintf(
                     'Stock insuffisant pour %s taille %s. Vente annulée.',
                     $product->getReference(),
@@ -420,7 +556,7 @@ class UserSellController extends AbstractController
             }
         }
 
-        // Tout est OK : on décrémente les stocks + crée les mouvements
+        // 2ème passe : décrémentation + création des mouvements
         foreach ($cart as $line) {
             /** @var Product $product */
             $product = $this->em->getRepository(Product::class)->find($line['product_id']);
@@ -434,8 +570,34 @@ class UserSellController extends AbstractController
                 'location' => $location,
             ]);
 
-            $newQuantity = $stock->getQuantity() - $line['quantity'];
+            $quantity  = (int) $line['quantity'];
+            $unitPrice = (float) $line['unit_price'];
+
+            $newQuantity = $stock->getQuantity() - $quantity;
             $stock->setQuantity($newQuantity);
+
+            $lineOriginal = $unitPrice * $quantity;
+
+            // Remise article
+            $linePercent = (int) ($line['discount_percent'] ?? 0);
+            if (!$saleModeActive) {
+                // Si le SaleMode a été coupé entre-temps, on ignore les remises article
+                $linePercent = 0;
+            }
+            if ($linePercent < 0) {
+                $linePercent = 0;
+            }
+            if ($linePercent > 50) {
+                $linePercent = 50;
+            }
+
+            $lineRate  = $linePercent > 0 ? $linePercent / 100.0 : 0.0;
+            $lineAfter = $lineRate > 0 ? $lineOriginal * (1 - $lineRate) : $lineOriginal;
+
+            // Remise panier 10 % (si active)
+            $lineFinal = $basketRate > 0
+                ? $lineAfter * (1 - $basketRate)
+                : $lineAfter;
 
             $movement = new StockMovement();
             $movement
@@ -444,16 +606,42 @@ class UserSellController extends AbstractController
                 ->setSize($size)
                 ->setLocation($location)
                 ->setUser($user)
-                ->setQuantity($line['quantity'])
-                ->setCreatedAt(new \DateTimeImmutable())
-                ->setComment(sprintf(
-                    'Vente. PU: %.2f. Réduction: %s. Total panier: %.2f. Bon d\'achat utilisé: %d. Montant payé réellement: %.2f.',
-                    $line['unit_price'],
-                    $discountApplied ? '10%' : '0%',
-                    $basketTotal,
-                    $voucherAmount,
-                    $cashAmount
-                ));
+                ->setQuantity($quantity)
+                ->setOriginalPrice(number_format($lineOriginal, 2, '.', ''))
+                ->setFinalPrice(number_format($lineFinal, 2, '.', ''))
+                ->setCreatedAt(new \DateTimeImmutable());
+
+            if ($lineRate > 0.0 || $basketRate > 0.0) {
+                $movement->setIsDiscounted(true);
+
+                // On stocke le "combo" des remises dans le label, pour être clair
+                $labels = [];
+                if ($lineRate > 0.0) {
+                    $labels[] = sprintf('Remise article %d%%', $linePercent);
+                }
+                if ($basketRate > 0.0) {
+                    $labels[] = 'Remise panier 10%';
+                }
+
+                $movement
+                    ->setDiscountPercent($linePercent) // % article uniquement
+                    ->setDiscountLabel(implode(' + ', $labels));
+            } else {
+                $movement
+                    ->setIsDiscounted(false)
+                    ->setDiscountPercent(null)
+                    ->setDiscountLabel(null);
+            }
+
+            $movement->setComment(sprintf(
+                'Vente. PU: %.2f. Remise article: %s. Remise panier: %s. Total panier après toutes remises: %.2f. Bon d\'achat utilisé: %d. Montant payé réellement: %.2f.',
+                $unitPrice,
+                $linePercent > 0 ? sprintf('%d%%', $linePercent) : '0%',
+                $basketDiscountPercent === 10 ? '10%' : '0%',
+                $basketTotal,
+                $voucherAmount,
+                $cashAmount
+            ));
 
             $this->em->persist($movement);
             $this->em->persist($stock);
@@ -461,15 +649,14 @@ class UserSellController extends AbstractController
 
         $this->em->flush();
 
-        // On vide le panier, la réduction et le bon d'achat
+        // On vide tout
         $session->remove(self::CART_SESSION_KEY);
-        $session->remove(self::CART_DISCOUNT_KEY);
+        $session->remove(self::CART_BASKET_DISCOUNT_KEY);
         $session->remove(self::CART_VOUCHER_KEY);
 
         $this->addFlash('success', sprintf(
-            'Vente enregistrée. Total: %.2f € (réduction %s, bon d\'achat: %d €, payé réellement: %.2f €).',
+            'Vente enregistrée. Total: %.2f € (remises appliquées, bon d\'achat: %d €, payé réellement: %.2f €).',
             $basketTotal,
-            $discountApplied ? '10%' : '0%',
             $voucherAmount,
             $cashAmount
         ));
@@ -478,33 +665,67 @@ class UserSellController extends AbstractController
     }
 
     /**
-     * Calcule le total du panier, applique la remise si activée
-     * et arrondit le total final à l’euro supérieur.
+     * Calcule le total du panier en tenant compte :
+     * - des remises article (si SaleMode actif)
+     * - de la remise panier (0 ou 10 %)
+     * - avec arrondi final à l'euro supérieur.
      *
      * @param array<int, array<string, mixed>> $cart
      */
-    private function calculateTotals(array $cart, bool $discountApplied): array
+    private function calculateTotals(array $cart, int $basketDiscountPercent, bool $saleModeActive): array
     {
-        $total = 0.0;
+        $totalBrut         = 0.0;
+        $totalAfterLine    = 0.0;
+        $sumLineDiscounted = 0.0;
 
         foreach ($cart as $line) {
-            $total += ((float) $line['unit_price']) * (int) $line['quantity'];
+            $unit     = (float) $line['unit_price'];
+            $qty      = (int) $line['quantity'];
+            $original = $unit * $qty;
+
+            $totalBrut += $original;
+
+            $linePercent = (int) ($line['discount_percent'] ?? 0);
+
+            if (!$saleModeActive) {
+                $linePercent = 0;
+            }
+
+            if ($linePercent < 0) {
+                $linePercent = 0;
+            }
+            if ($linePercent > 50) {
+                $linePercent = 50;
+            }
+
+            $lineRate  = $linePercent > 0 ? $linePercent / 100.0 : 0.0;
+            $lineFinal = $lineRate > 0 ? $original * (1 - $lineRate) : $original;
+
+            $totalAfterLine    += $lineFinal;
+            $sumLineDiscounted += ($original - $lineFinal);
         }
 
-        $discountRate = $discountApplied ? 0.10 : 0.0;
+        // Remise panier (0 ou 10 %)
+        if ($basketDiscountPercent !== 10) {
+            $basketDiscountPercent = 0;
+        }
+        $basketRate = $basketDiscountPercent === 10 ? 0.10 : 0.0;
 
-        if ($discountApplied) {
-            $afterDiscount = $total * (1 - $discountRate);
+        if ($basketRate > 0) {
+            $afterBasket = $totalAfterLine * (1 - $basketRate);
         } else {
-            $afterDiscount = $total;
+            $afterBasket = $totalAfterLine;
         }
 
-        $afterDiscountRounded = (float) ceil($afterDiscount);
+        $afterBasketRounded = (float) ceil($afterBasket);
 
         return [
-            'total'                => $total,
-            'discount_rate'        => $discountRate,
-            'total_after_discount' => $afterDiscountRounded,
+            'total'                => $totalBrut,
+            'discount_rate'        => $basketRate, // utilisé si besoin pour affichage, mais on passe aussi basket_discount_percent séparément
+            'total_after_discount' => $afterBasketRounded,
+            'discount_detail'      => [
+                'line_rate_sum' => $sumLineDiscounted,
+            ],
         ];
     }
 }

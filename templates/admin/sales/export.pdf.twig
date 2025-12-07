@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ page_title }}</title>
+    <style>
+        body {
+            font-family: DejaVu Sans, sans-serif;
+            font-size: 10px;
+        }
+        h1 {
+            font-size: 16px;
+            margin-bottom: 4px;
+        }
+        .meta {
+            font-size: 9px;
+            color: #555;
+            margin-bottom: 8px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 3px 4px;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        .text-right {
+            text-align: right;
+        }
+        .small {
+            font-size: 9px;
+        }
+        .summary {
+            margin-top: 6px;
+            margin-bottom: 6px;
+            font-size: 9px;
+        }
+    </style>
+</head>
+<body>
+
+<h1>{{ page_title }}</h1>
+<div class="meta">
+    {{ period_label }} – Généré le {{ now|date('d/m/Y H:i') }}
+</div>
+
+<div class="summary">
+    <strong>Nombre de lignes :</strong> {{ total_lines }}<br>
+    <strong>Quantité totale vendue :</strong> {{ total_quantity }}<br>
+    <strong>Chiffre d'affaires net encaissé :</strong>
+    {{ total_amount|number_format(2, ',', ' ') }} €<br>
+    <strong>Bons d'achat utilisés :</strong>
+    {{ total_voucher|number_format(2, ',', ' ') }} €<br>
+    <strong>Chiffre d'affaires brut :</strong>
+    {{ total_amount_gross|number_format(2, ',', ' ') }} € (avant remises)
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Magasin</th>
+            <th>Vendeuse</th>
+            <th>Référence</th>
+            <th>Produit</th>
+            <th>Taille</th>
+            <th class="text-right">Qté</th>
+            <th class="text-right">PU brut (€)</th>
+            <th class="text-right">Total brut (€)</th>
+            <th class="text-right">Total final (€)</th>
+            <th class="text-right">Remise</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% if movements is empty %}
+        <tr>
+            <td colspan="11" class="small">
+                Aucune vente pour cette période / ces filtres.
+            </td>
+        </tr>
+    {% else %}
+        {% for movement in movements %}
+            {% set product = movement.product %}
+            {% set qty = movement.quantity ?? 0 %}
+
+            {# Brut / net avec fallback pour anciennes ventes #}
+            {% set original = movement.originalPrice %}
+            {% set final = movement.finalPrice %}
+
+            {% if original is null and product and product.price is not null %}
+                {% set original = product.price * qty %}
+            {% endif %}
+            {% if final is null %}
+                {% set final = original ?? 0 %}
+            {% endif %}
+
+            {% set originalFloat = original ?? 0 %}
+            {% set finalFloat = final ?? 0 %}
+            {% set unitBrut = (qty > 0 and originalFloat > 0) ? (originalFloat / qty) : 0 %}
+
+            {% set isDiscounted = movement.isDiscounted ?? false %}
+            {% set discountLabel = movement.discountLabel ?? null %}
+
+            <tr>
+                <td class="small">
+                    {{ movement.createdAt ? movement.createdAt|date('d/m/Y H:i') : '-' }}
+                </td>
+                <td class="small">
+                    {% if movement.location %}
+                        {{ movement.location.code }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td class="small">
+                    {% if movement.user %}
+                        {{ movement.user.username }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td class="small">
+                    {% if product %}
+                        {{ product.reference }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td class="small">
+                    {% if product %}
+                        {{ product.name }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td class="small">
+                    {% if movement.size %}
+                        {{ movement.size.name }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td class="text-right small">
+                    {{ qty }}
+                </td>
+                <td class="text-right small">
+                    {% if unitBrut > 0 %}
+                        {{ unitBrut|number_format(2, ',', ' ') }}
+                    {% elseif product and product.price is not null %}
+                        {{ product.price|number_format(2, ',', ' ') }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td class="text-right small">
+                    {% if originalFloat > 0 %}
+                        {{ originalFloat|number_format(2, ',', ' ') }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td class="text-right small">
+                    {% if finalFloat > 0 %}
+                        {{ finalFloat|number_format(2, ',', ' ') }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td class="text-right small">
+                    {% if isDiscounted %}
+                        Oui
+                        {% if discountLabel %}
+                            ({{ discountLabel }})
+                        {% endif %}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+    {% endif %}
+    </tbody>
+</table>
+
+</body>
+</html>

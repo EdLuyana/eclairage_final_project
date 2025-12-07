@@ -1,0 +1,345 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ page_title ?? 'Création' }}{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h4 mb-0">{{ page_title }}</h1>
+        <div class="d-flex gap-2">
+            <a href="{{ path('admin_dashboard') }}" class="btn btn-outline-secondary btn-sm">
+                ← Dashboard
+            </a>
+            <a href="{{ path('admin_product_index') }}" class="btn btn-outline-primary btn-sm">
+                Tous les produits
+            </a>
+            <a href="{{ path('app_logout') }}" class="btn btn-outline-danger btn-sm">
+                Déconnexion
+            </a>
+        </div>
+    </div>
+
+    {# Flash messages #}
+    {% for label, messages in app.flashes %}
+        {% for message in messages %}
+            <div class="alert alert-{{ label }} alert-sm py-2">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endfor %}
+
+    <div class="card">
+        <div class="card-header">
+            <strong>Créer un ou plusieurs produits</strong>
+            <div class="text-muted">
+                Choisissez le fournisseur, le nom, les couleurs, les tailles, puis la collection / catégorie / prix.
+            </div>
+        </div>
+        <div class="card-body">
+            {{ form_start(product_form) }}
+
+            {# Fournisseur (avec bouton + pour popup) #}
+            <div class="mb-3">
+                {{ form_label(product_form.supplier) }}
+                <div class="input-group">
+                    {{ form_widget(product_form.supplier, {'attr': {'class': 'form-select'}}) }}
+                    <button type="button"
+                            class="btn btn-primary"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modalSupplier">
+                        +
+                    </button>
+                </div>
+                {{ form_errors(product_form.supplier) }}
+            </div>
+
+            {# Nom du produit #}
+            <div class="mb-3">
+                {{ form_row(product_form.name, {'attr': {'class': 'form-control'}}) }}
+            </div>
+
+            {# Couleurs (multi) #}
+            <div class="mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <label class="form-label mb-0">Couleurs</label>
+                    <button type="button"
+                            class="btn btn-primary btn-sm"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modalColor">
+                        + Ajouter une couleur
+                    </button>
+                </div>
+                <div class="border rounded p-2" style="max-height: 240px; overflow-y: auto;">
+                    {% if product_form.colors is defined %}
+                        <div class="d-flex flex-wrap gap-2">
+                            {% for child in product_form.colors %}
+                                <div class="form-check me-2 mb-1">
+                                    {{ form_widget(child, {
+                                        'attr': {
+                                            'class': 'form-check-input'
+                                        }
+                                    }) }}
+                                    {{ form_label(child, null, {
+                                        'label_attr': {
+                                            'class': 'form-check-label ms-1',
+                                            'style': 'font-size: 0.95rem;'
+                                        }
+                                    }) }}
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="text-muted">Aucune couleur disponible.</div>
+                    {% endif %}
+                </div>
+                <div class="form-text">
+                    Cochez une ou plusieurs couleurs : une référence par couleur sera créée.
+                </div>
+            </div>
+
+            {# Tailles : blocs US / FR / Unique #}
+            <div class="mb-3">
+                <label class="form-label">Tailles</label>
+                <div class="row g-2">
+                    {# FR #}
+                    <div class="col-12 col-md-4">
+                        <div class="border rounded p-2 h-100">
+                            <div class="fw-semibold mb-1">Tailles FR</div>
+                            {% if size_groups.FR is empty %}
+                                <div class="text-muted">Aucune taille FR définie.</div>
+                            {% else %}
+                                <div class="d-flex flex-wrap gap-1">
+                                    {% for size in size_groups.FR %}
+                                        {% set input_id = 'size_' ~ size.id %}
+                                        <input type="checkbox"
+                                               name="sizes[]"
+                                               value="{{ size.id }}"
+                                               class="btn-check"
+                                               id="{{ input_id }}"
+                                               autocomplete="off"
+                                               {{ size.id in selected_sizes ? 'checked' : '' }}>
+                                        <label class="btn btn-outline-secondary btn-sm mb-1"
+                                               for="{{ input_id }}"
+                                               style="font-size: 0.95rem;">
+                                            {{ size.name }}
+                                        </label>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    {# US #}
+                    <div class="col-12 col-md-4">
+                        <div class="border rounded p-2 h-100">
+                            <div class="fw-semibold mb-1">Tailles US</div>
+                            {% if size_groups.US is empty %}
+                                <div class="text-muted">Aucune taille US définie.</div>
+                            {% else %}
+                                <div class="d-flex flex-wrap gap-1">
+                                    {% for size in size_groups.US %}
+                                        {% set input_id = 'size_' ~ size.id %}
+                                        <input type="checkbox"
+                                               name="sizes[]"
+                                               value="{{ size.id }}"
+                                               class="btn-check"
+                                               id="{{ input_id }}"
+                                               autocomplete="off"
+                                               {{ size.id in selected_sizes ? 'checked' : '' }}>
+                                        <label class="btn btn-outline-secondary btn-sm mb-1"
+                                               for="{{ input_id }}"
+                                               style="font-size: 0.95rem;">
+                                            {{ size.name }}
+                                        </label>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    {# Unique / autres #}
+                    <div class="col-12 col-md-4">
+                        <div class="border rounded p-2 h-100">
+                            <div class="fw-semibold mb-1">Taille unique / autres</div>
+                            {% set combined = size_groups.UNIQUE|merge(size_groups.OTHER) %}
+                            {% if combined is empty %}
+                                <div class="text-muted">Aucune taille unique définie.</div>
+                            {% else %}
+                                <div class="d-flex flex-wrap gap-1">
+                                    {% for size in combined %}
+                                        {% set input_id = 'size_' ~ size.id %}
+                                        <input type="checkbox"
+                                               name="sizes[]"
+                                               value="{{ size.id }}"
+                                               class="btn-check"
+                                               id="{{ input_id }}"
+                                               autocomplete="off"
+                                               {{ size.id in selected_sizes ? 'checked' : '' }}>
+                                        <label class="btn btn-outline-secondary btn-sm mb-1"
+                                               for="{{ input_id }}"
+                                               style="font-size: 0.95rem;">
+                                            {{ size.name }}
+                                        </label>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div class="form-text">
+                    Sélectionnez les tailles disponibles pour ce modèle (FR, US, tailles mixtes ou taille unique).
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    {# Collection avec bouton + #}
+                    <div class="mb-3">
+                        {{ form_label(product_form.season) }}
+                        <div class="input-group">
+                            {{ form_widget(product_form.season, {'attr': {'class': 'form-select'}}) }}
+                            <button type="button"
+                                    class="btn btn-primary"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#modalSeason">
+                                +
+                            </button>
+                        </div>
+                        {{ form_errors(product_form.season) }}
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    {# Catégorie avec bouton + #}
+                    <div class="mb-3">
+                        {{ form_label(product_form.category) }}
+                        <div class="input-group">
+                            {{ form_widget(product_form.category, {'attr': {'class': 'form-select'}}) }}
+                            <button type="button"
+                                    class="btn btn-primary"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#modalCategory">
+                                +
+                            </button>
+                        </div>
+                        {{ form_errors(product_form.category) }}
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                {{ form_row(product_form.price, {
+                    'attr': {
+                        'class': 'form-control'
+                    }
+                }) }}
+            </div>
+
+            <div class="mt-3 d-flex justify-content-end">
+                <button type="submit" class="btn btn-success">
+                    Créer le(s) produit(s)
+                </button>
+            </div>
+
+            {{ form_end(product_form) }}
+        </div>
+    </div>
+
+    {# =================== MODALES POUR LES ÉLÉMENTS LIÉS =================== #}
+
+    {# Fournisseur #}
+    <div class="modal fade" id="modalSupplier" tabindex="-1" aria-labelledby="modalSupplierLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalSupplierLabel">Nouveau fournisseur</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+                </div>
+                <div class="modal-body">
+                    {{ form_start(supplier_form) }}
+                        {{ form_row(supplier_form.name) }}
+                        {{ form_row(supplier_form.isActive) }}
+                        <div class="mt-2 d-flex justify-content-end">
+                            <button type="submit" class="btn btn-primary btn-sm">
+                                Ajouter le fournisseur
+                            </button>
+                        </div>
+                    {{ form_end(supplier_form) }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Collection #}
+    <div class="modal fade" id="modalSeason" tabindex="-1" aria-labelledby="modalSeasonLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalSeasonLabel">Nouvelle collection</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+                </div>
+                <div class="modal-body">
+                    {{ form_start(season_form) }}
+                        {{ form_row(season_form.name) }}
+                        {{ form_row(season_form.year) }}
+                        {{ form_row(season_form.isActive) }}
+                        <div class="mt-2 d-flex justify-content-end">
+                            <button type="submit" class="btn btn-primary btn-sm">
+                                Ajouter la collection
+                            </button>
+                        </div>
+                    {{ form_end(season_form) }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Catégorie #}
+    <div class="modal fade" id="modalCategory" tabindex="-1" aria-labelledby="modalCategoryLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalCategoryLabel">Nouvelle catégorie</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+                </div>
+                <div class="modal-body">
+                    {{ form_start(category_form) }}
+                        {{ form_row(category_form.name) }}
+                        {{ form_row(category_form.isActive) }}
+                        <div class="mt-2 d-flex justify-content-end">
+                            <button type="submit" class="btn btn-primary btn-sm">
+                                Ajouter la catégorie
+                            </button>
+                        </div>
+                    {{ form_end(category_form) }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Couleur #}
+    <div class="modal fade" id="modalColor" tabindex="-1" aria-labelledby="modalColorLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalColorLabel">Nouvelle couleur</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+                </div>
+                <div class="modal-body">
+                    {{ form_start(color_form) }}
+                        {{ form_row(color_form.name) }}
+                        {{ form_row(color_form.hexCode) }}
+                        {{ form_row(color_form.isActive) }}
+                        <div class="mt-2 d-flex justify-content-end">
+                            <button type="submit" class="btn btn-primary btn-sm">
+                                Ajouter la couleur
+                            </button>
+                        </div>
+                    {{ form_end(color_form) }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

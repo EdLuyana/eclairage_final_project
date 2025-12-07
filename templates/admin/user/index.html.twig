@@ -1,0 +1,190 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ page_title ?? 'Gestion des comptes utilisateurs' }}{% endblock %}
+
+{% block body %}
+<div class="container py-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h1 class="h4 mb-1">{{ page_title }}</h1>
+            <p class="text-muted small mb-0">
+                Créez, archivez, réactivez ou modifiez les rôles des comptes vendeuses et admin.
+            </p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{{ path('admin_user_new') }}" class="btn btn-primary btn-sm">
+                + Nouveau compte
+            </a>
+            <a href="{{ path('admin_dashboard') }}" class="btn btn-outline-secondary btn-sm">
+                ← Dashboard admin
+            </a>
+        </div>
+    </div>
+
+    {# Comptes actifs #}
+    <div class="card mb-3">
+        <div class="card-header py-2">
+            <strong>Comptes actifs</strong>
+        </div>
+        <div class="card-body p-0">
+            {% if active_users is empty %}
+                <p class="text-muted small p-3 mb-0">
+                    Aucun compte actif pour le moment.
+                </p>
+            {% else %}
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0 align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Nom d'utilisateur</th>
+                                <th>Rôle principal</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for user in active_users %}
+                            {% set isAdmin = 'ROLE_ADMIN' in user.roles %}
+                            <tr>
+                                <td>{{ user.username }}</td>
+                                <td>
+                                    {% if isAdmin %}
+                                        <span class="badge text-bg-danger small">Administrateur</span>
+                                    {% else %}
+                                        <span class="badge text-bg-secondary small">Vendeuse</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">
+                                    <a href="{{ path('admin_user_edit_password', {id: user.id}) }}"
+                                       class="btn btn-outline-secondary btn-sm">
+                                        Mot de passe
+                                    </a>
+
+                                    {# Bouton pour changer le rôle #}
+                                    <form method="post"
+                                          action="{{ path('admin_user_toggle_role', {id: user.id}) }}"
+                                          class="d-inline">
+                                        <input type="hidden" name="_token"
+                                               value="{{ csrf_token('toggle_role_' ~ user.id) }}">
+                                        {% if isAdmin %}
+                                            <button type="submit"
+                                                    class="btn btn-outline-warning btn-sm"
+                                                    onclick="return confirm('Repasser ce compte en simple vendeuse ?');">
+                                                Basculer vendeuse
+                                            </button>
+                                        {% else %}
+                                            <button type="submit"
+                                                    class="btn btn-outline-primary btn-sm"
+                                                    onclick="return confirm('Promouvoir ce compte en administrateur ?');">
+                                                Promouvoir admin
+                                            </button>
+                                        {% endif %}
+                                    </form>
+
+                                    {# Archiver / réactiver #}
+                                    <form method="post"
+                                          action="{{ path('admin_user_toggle_archive', {id: user.id}) }}"
+                                          class="d-inline">
+                                        <input type="hidden" name="_token"
+                                               value="{{ csrf_token('toggle_archive_' ~ user.id) }}">
+                                        <button type="submit"
+                                                class="btn btn-outline-danger btn-sm"
+                                                onclick="return confirm('Archiver ce compte ?');">
+                                            Archiver
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# Comptes archivés #}
+    <div class="card">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+            <strong>Comptes archivés</strong>
+            <span class="text-muted small">
+                (masqués par défaut)
+            </span>
+        </div>
+        <div class="card-body p-0">
+            {% if archived_users is empty %}
+                <p class="text-muted small p-3 mb-0">
+                    Aucun compte archivé.
+                </p>
+            {% else %}
+                <details class="w-100">
+                    <summary class="px-3 py-2 small text-muted" style="cursor: pointer;">
+                        Afficher / masquer les comptes archivés
+                    </summary>
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Nom d'utilisateur</th>
+                                    <th>Rôle principal</th>
+                                    <th class="text-end">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            {% for user in archived_users %}
+                                {% set isAdmin = 'ROLE_ADMIN' in user.roles %}
+                                <tr>
+                                    <td>{{ user.username }}</td>
+                                    <td>
+                                        {% if isAdmin %}
+                                            <span class="badge text-bg-danger small">Administrateur</span>
+                                        {% else %}
+                                            <span class="badge text-bg-secondary small">Vendeuse</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">
+                                        {# On autorise le changement de rôle même archivé, au cas où #}
+                                        <form method="post"
+                                              action="{{ path('admin_user_toggle_role', {id: user.id}) }}"
+                                              class="d-inline">
+                                            <input type="hidden" name="_token"
+                                                   value="{{ csrf_token('toggle_role_' ~ user.id) }}">
+                                            {% if isAdmin %}
+                                                <button type="submit"
+                                                        class="btn btn-outline-warning btn-sm"
+                                                        onclick="return confirm('Repasser ce compte en simple vendeuse ?');">
+                                                    Basculer vendeuse
+                                                </button>
+                                            {% else %}
+                                                <button type="submit"
+                                                        class="btn btn-outline-primary btn-sm"
+                                                        onclick="return confirm('Promouvoir ce compte en administrateur ?');">
+                                                    Promouvoir admin
+                                                </button>
+                                            {% endif %}
+                                        </form>
+
+                                        <form method="post"
+                                              action="{{ path('admin_user_toggle_archive', {id: user.id}) }}"
+                                              class="d-inline">
+                                            <input type="hidden" name="_token"
+                                                   value="{{ csrf_token('toggle_archive_' ~ user.id) }}">
+                                            <button type="submit"
+                                                    class="btn btn-outline-success btn-sm"
+                                                    onclick="return confirm('Réactiver ce compte ?');">
+                                                Réactiver
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </details>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}

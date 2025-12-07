@@ -1,0 +1,116 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ page_title ?? 'Modifier produit' }}{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h4 mb-0">{{ page_title }}</h1>
+        <div class="d-flex gap-2">
+            <a href="{{ path('admin_product_index') }}" class="btn btn-outline-secondary btn-sm">
+                ← Tous les produits
+            </a>
+            <a href="{{ path('admin_dashboard') }}" class="btn btn-outline-secondary btn-sm">
+                Dashboard
+            </a>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-body small">
+            <div class="row">
+                <div class="col-md-6">
+                    <dl class="row mb-0">
+                        <dt class="col-4">Référence</dt>
+                        <dd class="col-8"><code>{{ product.reference }}</code></dd>
+
+                        <dt class="col-4">Fournisseur</dt>
+                        <dd class="col-8">
+                            {{ product.supplier ? product.supplier.name : '-' }}
+                        </dd>
+
+                        <dt class="col-4">Code barre (base)</dt>
+                        <dd class="col-8">
+                            {% if product.barcodeBase %}
+                                <code>{{ product.barcodeBase }}</code>
+                            {% else %}
+                                <span class="text-muted">Non défini</span>
+                            {% endif %}
+                        </dd>
+                    </dl>
+                </div>
+                <div class="col-md-6">
+                    <dl class="row mb-0">
+                        <dt class="col-4">Créé le</dt>
+                        <dd class="col-8">
+                            {{ product.createdAt ? product.createdAt|date('d/m/Y H:i') : '-' }}
+                        </dd>
+                        <dt class="col-4">Mis à jour</dt>
+                        <dd class="col-8">
+                            {{ product.updatedAt ? product.updatedAt|date('d/m/Y H:i') : '-' }}
+                        </dd>
+                        <dt class="col-4">Archivé</dt>
+                        <dd class="col-8">
+                            {% if product.isArchived %}
+                                <span class="badge bg-secondary">Oui</span>
+                            {% else %}
+                                <span class="badge bg-success">Non</span>
+                            {% endif %}
+                        </dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <strong>Modifier les informations modifiables</strong>
+            <div class="text-muted small">
+                La référence et le code barre restent inchangés pour éviter les incohérences avec les étiquettes et la vente.
+            </div>
+        </div>
+        <div class="card-body">
+            {{ form_start(form) }}
+
+            <div class="mb-3">
+                {{ form_row(form.name) }}
+            </div>
+
+            <div class="mb-3">
+                {{ form_row(form.color) }}
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        {{ form_row(form.season) }}
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        {{ form_row(form.category) }}
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                {{ form_row(form.price) }}
+            </div>
+
+            <div class="d-flex justify-content-end gap-2">
+                <a href="{{ path('admin_product_index') }}" class="btn btn-outline-secondary">
+                    Annuler
+                </a>
+                <button type="submit" class="btn btn-success">
+                    Enregistrer les modifications
+                </button>
+            </div>
+
+            {{ form_end(form) }}
+        </div>
+    </div>
+
+</div>
+{% endblock %}

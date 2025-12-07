@@ -15,7 +15,6 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: ProductRepository::class)]
-#[ORM\UniqueConstraint(name: 'UNIQ_PRODUCT_REFERENCE', fields: ['reference'])]
 class Product
 {
     #[ORM\Id]
@@ -26,11 +25,20 @@ class Product
     #[ORM\Column(length: 100)]
     private ?string $name = null;
 
-    #[ORM\Column(length: 190)]
+    #[ORM\Column(length: 190, unique: true)]
     private ?string $reference = null;
 
     #[ORM\Column(type: Types::DECIMAL, precision: 10, scale: 2)]
     private ?string $price = null;
+
+    #[ORM\Column(length: 32, unique: true, nullable: true)]
+    private ?string $barcodeBase = null;
+
+    #[ORM\Column(options: ['default' => false])]
+    private bool $isArchived = false;
+
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
+    private ?string $sizesConfig = null;
 
     #[ORM\Column(length: 20)]
     private ?string $status = null;
@@ -46,15 +54,12 @@ class Product
     private ?Supplier $supplier = null;
 
     #[ORM\ManyToOne(inversedBy: 'products')]
-    #[ORM\JoinColumn(nullable: false)]
     private ?Season $season = null;
 
     #[ORM\ManyToOne(inversedBy: 'products')]
-    #[ORM\JoinColumn(nullable: false)]
     private ?Category $category = null;
 
     #[ORM\ManyToOne(inversedBy: 'products')]
-    #[ORM\JoinColumn(nullable: false)]
     private ?Color $color = null;
 
     /**
@@ -71,9 +76,10 @@ class Product
 
     public function __construct()
     {
-        $this->createdAt = new \DateTimeImmutable();
-        $this->status = 'ACTIVE';
-        $this->stocks = new ArrayCollection();
+        $this->createdAt      = new \DateTimeImmutable();
+        $this->status         = 'ACTIVE';
+        $this->isArchived     = false;
+        $this->stocks         = new ArrayCollection();
         $this->stockMovements = new ArrayCollection();
     }
 
@@ -90,6 +96,7 @@ class Product
     public function setName(string $name): static
     {
         $this->name = $name;
+
         return $this;
     }
 
@@ -101,6 +108,7 @@ class Product
     public function setReference(string $reference): static
     {
         $this->reference = $reference;
+
         return $this;
     }
 
@@ -112,6 +120,43 @@ class Product
     public function setPrice(string $price): static
     {
         $this->price = $price;
+
+        return $this;
+    }
+
+    public function getBarcodeBase(): ?string
+    {
+        return $this->barcodeBase;
+    }
+
+    public function setBarcodeBase(?string $barcodeBase): static
+    {
+        $this->barcodeBase = $barcodeBase;
+
+        return $this;
+    }
+
+    public function isArchived(): bool
+    {
+        return $this->isArchived;
+    }
+
+    public function setIsArchived(bool $isArchived): static
+    {
+        $this->isArchived = $isArchived;
+
+        return $this;
+    }
+
+    public function getSizesConfig(): ?string
+    {
+        return $this->sizesConfig;
+    }
+
+    public function setSizesConfig(?string $sizesConfig): static
+    {
+        $this->sizesConfig = $sizesConfig;
+
         return $this;
     }
 
@@ -123,6 +168,7 @@ class Product
     public function setStatus(string $status): static
     {
         $this->status = $status;
+
         return $this;
     }
 
@@ -134,6 +180,7 @@ class Product
     public function setCreatedAt(\DateTimeImmutable $createdAt): static
     {
         $this->createdAt = $createdAt;
+
         return $this;
     }
 
@@ -145,6 +192,7 @@ class Product
     public function setUpdatedAt(?\DateTime $updatedAt): static
     {
         $this->updatedAt = $updatedAt;
+
         return $this;
     }
 
@@ -156,6 +204,7 @@ class Product
     public function setSupplier(?Supplier $supplier): static
     {
         $this->supplier = $supplier;
+
         return $this;
     }
 
@@ -167,6 +216,7 @@ class Product
     public function setSeason(?Season $season): static
     {
         $this->season = $season;
+
         return $this;
     }
 
@@ -178,6 +228,7 @@ class Product
     public function setCategory(?Category $category): static
     {
         $this->category = $category;
+
         return $this;
     }
 
@@ -189,12 +240,8 @@ class Product
     public function setColor(?Color $color): static
     {
         $this->color = $color;
-        return $this;
-    }
 
-    public function __toString(): string
-    {
-        return $this->reference ?? ($this->name ?? ('Product #'.$this->id));
+        return $this;
     }
 
     /**
@@ -253,5 +300,10 @@ class Product
         }
 
         return $this;
+    }
+
+    public function __toString(): string
+    {
+        return $this->reference ?? ('Product #' . $this->id);
     }
 }

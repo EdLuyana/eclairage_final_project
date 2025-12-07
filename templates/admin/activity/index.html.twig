@@ -1,0 +1,185 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ page_title ?? 'Journal d’activité' }}{% endblock %}
+
+{% block body %}
+<div class="container py-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h1 class="h4 mb-1">{{ page_title }}</h1>
+            <p class="text-muted small mb-0">
+                Historique des mouvements de stock (ajouts, retours, transferts, etc.).
+            </p>
+        </div>
+        <a href="{{ path('admin_dashboard') }}" class="btn btn-outline-secondary btn-sm">
+            ← Dashboard admin
+        </a>
+    </div>
+
+    {# FILTRES #}
+    <div class="card mb-3">
+        <div class="card-body py-3">
+            <form method="get" class="row g-2 align-items-end">
+
+                <div class="col-6 col-md-3">
+                    <label class="form-label form-label-sm mb-1">Période</label>
+                    <select name="period" class="form-select form-select-sm">
+                        <option value="24h" {{ current_period == '24h' ? 'selected' }}>Dernières 24h</option>
+                        <option value="7d"  {{ current_period == '7d'  ? 'selected' }}>7 derniers jours</option>
+                        <option value="1m"  {{ current_period == '1m'  ? 'selected' }}>Dernier mois</option>
+                        <option value="all" {{ current_period == 'all' ? 'selected' }}>Tout l’historique</option>
+                    </select>
+                </div>
+
+                <div class="col-6 col-md-3">
+                    <label class="form-label form-label-sm mb-1">Vendeuse</label>
+                    <select name="user" class="form-select form-select-sm">
+                        <option value="">Toutes</option>
+                        {% for u in users %}
+                            <option value="{{ u.id }}" {{ current_user_id == u.id ? 'selected' }}>
+                                {{ u.username }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-6 col-md-3">
+                    <label class="form-label form-label-sm mb-1">Magasin</label>
+                    <select name="location" class="form-select form-select-sm">
+                        <option value="">Tous</option>
+                        {% for loc in locations %}
+                            <option value="{{ loc.id }}" {{ current_location_id == loc.id ? 'selected' }}>
+                                {{ loc.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-6 col-md-3">
+                    <label class="form-label form-label-sm mb-1">Type de mouvement</label>
+                    <select name="type" class="form-select form-select-sm">
+                        <option value="">Tous</option>
+                        {% for t in types %}
+                            <option value="{{ t }}" {{ current_type == t ? 'selected' }}>
+                                {{ typeLabels[t] ?? t }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-12 d-flex justify-content-between mt-2">
+                    <button class="btn btn-primary btn-sm">
+                        Appliquer les filtres
+                    </button>
+                    <a href="{{ path('admin_activity_index') }}" class="btn btn-outline-secondary btn-sm">
+                        Réinitialiser
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {# RÉSUMÉ / TOTAUX #}
+    <div class="row g-3 mb-3">
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body py-2 text-center">
+                    <div class="text-muted small">Nombre de mouvements</div>
+                    <div class="h5 mb-0">{{ movements|length }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body py-2 text-center">
+                    <div class="text-muted small">Quantités entrées</div>
+                    <div class="h5 mb-0">{{ total_in }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body py-2 text-center">
+                    <div class="text-muted small">Quantités sorties</div>
+                    <div class="h5 mb-0">{{ total_out }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# TABLEAU PRINCIPAL #}
+    <div class="card">
+        <div class="card-body p-0">
+            {% if movements is empty %}
+                <p class="text-muted small p-3 mb-0">
+                    Aucun mouvement pour les filtres sélectionnés.
+                </p>
+            {% else %}
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0 align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Date</th>
+                                <th>Magasin</th>
+                                <th>Vendeuse</th>
+                                <th>Type</th>
+                                <th>Produit</th>
+                                <th>Taille</th>
+                                <th class="text-end">Quantité</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for m in movements %}
+                                <tr>
+                                    <td class="small">
+                                        {{ m.createdAt|date('d/m/Y H:i') }}
+                                    </td>
+                                    <td class="small">
+                                        {{ m.location ? m.location.name : '-' }}
+                                    </td>
+                                    <td class="small">
+                                        {{ m.user ? m.user.username : '-' }}
+                                    </td>
+                                    <td class="small">
+                                        {% set type = m.type %}
+                                        {% set label = typeLabels[type] ?? type %}
+                                        {% set badgeClass = typeBadgeClasses[type] ?? 'bg-secondary' %}
+
+                                        <span class="badge {{ badgeClass }} small">
+                                            {{ label }}
+                                        </span>
+                                    </td>
+                                    <td class="small">
+                                        {{ m.product ? m.product.reference ~ ' · ' ~ m.product.name : '-' }}
+                                    </td>
+                                    <td class="small">
+                                        {{ m.size ? m.size.name : '-' }}
+                                    </td>
+                                    <td class="text-end small">
+                                        {% set qty = m.quantity %}
+                                        {% if qty > 0 %}
+                                            <span class="text-success">+{{ qty }}</span>
+                                        {% elseif qty < 0 %}
+                                            <span class="text-danger">{{ qty }}</span>
+                                        {% else %}
+                                            {{ qty }}
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+
+<style>
+    .form-label-sm {
+        font-size: 0.8rem;
+    }
+</style>
+{% endblock %}

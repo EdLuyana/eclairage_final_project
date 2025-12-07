@@ -13,6 +13,18 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity(repositoryClass: StockMovementRepository::class)]
 class StockMovement
 {
+    /**
+     * Types de mouvement standardisés
+     */
+    public const TYPE_SALE             = 'SALE';
+    public const TYPE_RETURN           = 'RETURN';
+    public const TYPE_REASSORT         = 'REASSORT';
+    public const TYPE_TRANSFER_OUT     = 'TRANSFER_OUT';
+    public const TYPE_TRANSFER_IN      = 'TRANSFER_IN';
+    public const TYPE_RESERVATION_OUT  = 'RESERVATION_OUT';
+    public const TYPE_RESERVATION_IN   = 'RESERVATION_IN';
+    public const TYPE_MANUAL_DECREMENT = 'MANUAL_DECREMENT';
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -29,6 +41,21 @@ class StockMovement
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $comment = null;
+
+    #[ORM\Column(type: Types::DECIMAL, precision: 10, scale: 2, nullable: true)]
+    private ?string $originalPrice = null;
+
+    #[ORM\Column(type: Types::DECIMAL, precision: 10, scale: 2, nullable: true)]
+    private ?string $finalPrice = null;
+
+    #[ORM\Column(type: Types::SMALLINT, nullable: true)]
+    private ?int $discountPercent = null;
+
+    #[ORM\Column(length: 100, nullable: true)]
+    private ?string $discountLabel = null;
+
+    #[ORM\Column]
+    private bool $isDiscounted = false;
 
     #[ORM\ManyToOne(inversedBy: 'stockMovements')]
     #[ORM\JoinColumn(nullable: false)]
@@ -47,8 +74,9 @@ class StockMovement
 
     public function __construct()
     {
-        $this->createdAt = new \DateTimeImmutable();
-        $this->quantity = 0;
+        $this->createdAt    = new \DateTimeImmutable();
+        $this->quantity     = 0;
+        $this->isDiscounted = false;
     }
 
     public function getId(): ?int
@@ -100,6 +128,66 @@ class StockMovement
     public function setComment(?string $comment): static
     {
         $this->comment = $comment;
+
+        return $this;
+    }
+
+    public function getOriginalPrice(): ?string
+    {
+        return $this->originalPrice;
+    }
+
+    public function setOriginalPrice(?string $originalPrice): static
+    {
+        $this->originalPrice = $originalPrice;
+
+        return $this;
+    }
+
+    public function getFinalPrice(): ?string
+    {
+        return $this->finalPrice;
+    }
+
+    public function setFinalPrice(?string $finalPrice): static
+    {
+        $this->finalPrice = $finalPrice;
+
+        return $this;
+    }
+
+    public function getDiscountPercent(): ?int
+    {
+        return $this->discountPercent;
+    }
+
+    public function setDiscountPercent(?int $discountPercent): static
+    {
+        $this->discountPercent = $discountPercent;
+
+        return $this;
+    }
+
+    public function getDiscountLabel(): ?string
+    {
+        return $this->discountLabel;
+    }
+
+    public function setDiscountLabel(?string $discountLabel): static
+    {
+        $this->discountLabel = $discountLabel;
+
+        return $this;
+    }
+
+    public function isDiscounted(): bool
+    {
+        return $this->isDiscounted;
+    }
+
+    public function setIsDiscounted(bool $isDiscounted): static
+    {
+        $this->isDiscounted = $isDiscounted;
 
         return $this;
     }

@@ -1,0 +1,143 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ page_title ?? 'Réassort' }}{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h4 mb-0">{{ page_title }}</h1>
+        <a href="{{ path('admin_dashboard') }}" class="btn btn-outline-secondary btn-sm">
+            ← Dashboard
+        </a>
+    </div>
+
+    {# Formulaire d'ajout d'un produit au lot #}
+    <div class="card mb-3">
+        <div class="card-body">
+            <form method="post" action="{{ path('admin_reassort_index') }}" class="row g-2 align-items-end">
+                <div class="col-sm-8 col-md-6">
+                    <label for="reference" class="form-label small mb-1">Référence produit</label>
+                    <input
+                        type="text"
+                        name="reference"
+                        id="reference"
+                        class="form-control form-control-sm js-reference-autocomplete"
+                        value="{{ reference }}"
+                        autocomplete="off"
+                        placeholder="Ex : Fourn_Coll_nom_du_prod"
+                        data-autocomplete="product-reference"
+                        data-autocomplete-url="{{ path('admin_reassort_autocomplete') }}"
+                    >
+                </div>
+                <div class="col-sm-4 col-md-3">
+                    <button type="submit" name="action" value="add_product" class="btn btn-primary btn-sm w-100">
+                        Ajouter au lot
+                    </button>
+                </div>
+            </form>
+            <p class="text-muted small mt-2 mb-0">
+                Ajoutez ici tous les produits reçus dans la commande. Vous pourrez ensuite saisir les quantités par taille
+                et générer en une fois toutes les étiquettes du réassort.
+            </p>
+        </div>
+    </div>
+
+    {% if batch is empty %}
+        <div class="alert alert-info">
+            Aucun produit n'a encore été ajouté au lot de réassort.
+            Saisissez une référence ci-dessus pour commencer.
+        </div>
+    {% else %}
+        {# Formulaire global pour la génération d'étiquettes #}
+        <form id="reassort_generate_form" method="post" action="{{ path('admin_reassort_index') }}">
+            <input type="hidden" name="_token" value="{{ csrf_token('reassort_generate_labels') }}">
+            <input type="hidden" name="action" value="generate_labels">
+        </form>
+
+        {% for item in batch %}
+            {% set product = item.product %}
+            {% set sizes   = item.sizes %}
+
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div>
+                            <div class="fw-semibold small">{{ product.reference }}</div>
+                            <div class="small text-muted">
+                                {{ product.name }}
+                                {% if product.color %}
+                                    · {{ product.color.name }}
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        {# Bouton supprimer du lot #}
+                        <form method="post"
+                              action="{{ path('admin_reassort_index') }}"
+                              class="d-inline">
+                            <input type="hidden" name="action" value="remove_product">
+                            <input type="hidden" name="product_id" value="{{ product.id }}">
+                            <input type="hidden" name="_token" value="{{ csrf_token('reassort_remove_' ~ product.id) }}">
+                            <button type="submit"
+                                    class="btn btn-outline-danger btn-sm"
+                                    title="Retirer ce produit du lot">
+                                &times;
+                            </button>
+                        </form>
+                    </div>
+
+                    {% if sizes is empty %}
+                        <div class="alert alert-warning small mb-0">
+                            Aucune taille n'est configurée pour ce produit. Impossible de générer des étiquettes.
+                        </div>
+                    {% else %}
+                        <div class="table-responsive mb-0">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 40%">Taille</th>
+                                        <th style="width: 60%">Nombre d'étiquettes</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for size in sizes %}
+                                        <tr>
+                                            <td>
+                                                <strong>{{ size.name }}</strong>
+                                            </td>
+                                            <td>
+                                                <input
+                                                    type="number"
+                                                    name="quantities[{{ product.id }}][{{ size.id }}]"
+                                                    class="form-control form-control-sm"
+                                                    min="0"
+                                                    value="0"
+                                                    form="reassort_generate_form"
+                                                >
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        {% endfor %}
+
+        <div class="d-flex justify-content-between align-items-center mt-3">
+            <p class="small text-muted mb-0">
+                Toutes les étiquettes saisies ci-dessus seront générées dans un seul PDF
+                (4 colonnes × 14 lignes par page, 56 étiquettes par feuille).
+            </p>
+            <button type="submit"
+                    class="btn btn-success btn-sm"
+                    form="reassort_generate_form">
+                Générer les étiquettes du réassort
+            </button>
+        </div>
+    {% endif %}
+
+</div>
+{% endblock %}

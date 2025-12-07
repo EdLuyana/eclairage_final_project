@@ -1,0 +1,26 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ page_title ?? 'Nouveau compte' }}{% endblock %}
+
+{% block body %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h4 mb-0">{{ page_title }}</h1>
+        <a href="{{ path('admin_user_index') }}" class="btn btn-outline-secondary btn-sm">
+            ← Retour liste
+        </a>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            {{ form_start(form) }}
+                {{ form_row(form.username) }}
+                {{ form_row(form.plainPassword.first) }}
+                {{ form_row(form.plainPassword.second) }}
+
+                <button class="btn btn-primary btn-sm mt-2">Créer le compte</button>
+            {{ form_end(form) }}
+        </div>
+    </div>
+</div>
+{% endblock %}

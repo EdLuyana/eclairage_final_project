@@ -1,0 +1,286 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ page_title ?? 'Journal des ventes' }}{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h1 class="h4 mb-0">{{ page_title }}</h1>
+            <div class="text-muted small">
+                {{ period_label }} ·
+                Généré le {{ now|date('d/m/Y H:i') }}
+            </div>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{{ path('admin_dashboard') }}" class="btn btn-outline-secondary btn-sm">
+                ← Dashboard
+            </a>
+            <a href="{{ path('admin_stock_index') }}" class="btn btn-outline-primary btn-sm">
+                Stock global
+            </a>
+            <a href="{{ path('admin_sales_export_pdf', {
+                period:   filters.period,
+                location: filters.location,
+                user:     filters.user
+            }) }}" class="btn btn-primary btn-sm">
+                Export PDF
+            </a>
+            <a href="{{ path('app_logout') }}" class="btn btn-outline-danger btn-sm">
+                Déconnexion
+            </a>
+        </div>
+    </div>
+
+    {# Résumé #}
+    <div class="row g-2 mb-3">
+        <div class="col-12 col-md-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-2">
+                    <div class="text-muted small">Nombre de ventes (lignes)</div>
+                    <div class="fs-5 fw-semibold">{{ total_lines }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-2">
+                    <div class="text-muted small">Quantité totale vendue</div>
+                    <div class="fs-5 fw-semibold">{{ total_quantity }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-2">
+                    <div class="text-muted small">Chiffre d'affaires</div>
+                    <div class="fs-5 fw-semibold">
+                        {# total_amount = CA NET ENCAISSÉ (après remises + bons d'achat) #}
+                        {{ total_amount|number_format(2, ',', ' ') }} €
+                    </div>
+                    <div class="text-muted small">
+                        <span class="d-block">
+                            <strong>Net encaissé :</strong>
+                            après remises et bons d'achat (geste co, soldes, etc.).
+                        </span>
+                        <span class="d-block">
+                            <strong>Bons d'achat utilisés :</strong>
+                            {{ total_voucher|number_format(2, ',', ' ') }} €.
+                        </span>
+                        <span class="d-block">
+                            <strong>Brut :</strong>
+                            {{ total_amount_gross|number_format(2, ',', ' ') }} €
+                            (avant remises).
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Filtres #}
+    <form method="get" class="card mb-3 p-3">
+        <div class="row g-2 align-items-end">
+            <div class="col-12 col-md-3">
+                <label class="form-label">Période</label>
+                <select name="period" class="form-select form-select-sm">
+                    <option value="24h"  {{ filters.period == '24h'  ? 'selected' : '' }}>24 dernières heures</option>
+                    <option value="7d"   {{ filters.period == '7d'   ? 'selected' : '' }}>7 derniers jours</option>
+                    <option value="1m"   {{ filters.period == '1m'   ? 'selected' : '' }}>30 derniers jours</option>
+                    <option value="month"{{ filters.period == 'month'? 'selected' : '' }}>Mois en cours</option>
+                    <option value="year" {{ filters.period == 'year' ? 'selected' : '' }}>Année en cours</option>
+                    <option value="all"  {{ filters.period == 'all'  ? 'selected' : '' }}>Toutes les ventes</option>
+                </select>
+            </div>
+
+            <div class="col-12 col-md-3">
+                <label class="form-label">Magasin</label>
+                <select name="location" class="form-select form-select-sm">
+                    <option value="">Tous</option>
+                    {% for location in locations %}
+                        <option value="{{ location.id }}" {{ filters.location == location.id ? 'selected' : '' }}>
+                            {{ location.code }} – {{ location.name }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-12 col-md-3">
+                <label class="form-label">Vendeuse</label>
+                <select name="user" class="form-select form-select-sm">
+                    <option value="">Toutes</option>
+                    {% for u in users %}
+                        <option value="{{ u.id }}" {{ filters.user == u.id ? 'selected' : '' }}>
+                            {{ u.username }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-12 col-md-3">
+                <div class="d-flex gap-2 mt-4">
+                    <button class="btn btn-primary btn-sm" type="submit">
+                        Filtrer
+                    </button>
+                    <a href="{{ path('admin_sales_index') }}" class="btn btn-outline-secondary btn-sm">
+                        Réinitialiser
+                    </a>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    {# Tableau des ventes #}
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-striped mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Date</th>
+                            <th>Magasin</th>
+                            <th>Vendeuse</th>
+                            <th>Référence</th>
+                            <th>Nom produit</th>
+                            <th>Taille</th>
+                            <th class="text-end">Qté</th>
+                            <th class="text-end">PU brut</th>
+                            <th class="text-end">Total brut</th>
+                            <th class="text-end">Total final</th>
+                            <th class="text-end">Remise</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% if movements is empty %}
+                        <tr>
+                            <td colspan="11" class="text-center text-muted py-3">
+                                Aucune vente pour cette période / ces filtres.
+                            </td>
+                        </tr>
+                    {% else %}
+                        {% for movement in movements %}
+                            {% set product = movement.product %}
+                            {% set qty = movement.quantity ?? 0 %}
+
+                            {# Récupération brut / net avec fallback pour les anciennes ventes #}
+                            {% set original = movement.originalPrice %}
+                            {% set final = movement.finalPrice %}
+
+                            {% if original is null and product and product.price is not null %}
+                                {% set original = product.price * qty %}
+                            {% endif %}
+                            {% if final is null %}
+                                {% set final = original ?? 0 %}
+                            {% endif %}
+
+                            {% set originalFloat = original ?? 0 %}
+                            {% set finalFloat = final ?? 0 %}
+
+                            {% set unitBrut = (qty > 0) ? (originalFloat / qty) : 0 %}
+
+                            {% set isDiscounted = movement.isDiscounted ?? false %}
+                            {% set discountLabel = movement.discountLabel ?? null %}
+
+                            <tr>
+                                <td class="small">
+                                    {{ movement.createdAt ? movement.createdAt|date('d/m/Y H:i') : '-' }}
+                                </td>
+                                <td>
+                                    {% if movement.location %}
+                                        {{ movement.location.code }}
+                                        <span class="text-muted small d-block">
+                                            {{ movement.location.name }}
+                                        </span>
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if movement.user %}
+                                        {{ movement.user.username }}
+                                    {% else %}
+                                        <span class="text-muted small">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if product %}
+                                        <code class="small">{{ product.reference }}</code>
+                                    {% else %}
+                                        <span class="text-muted small">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if product %}
+                                        {{ product.name }}
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if movement.size %}
+                                        {{ movement.size.name }}
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">
+                                    {{ qty }}
+                                </td>
+                                <td class="text-end">
+                                    {% if unitBrut > 0 %}
+                                        {{ unitBrut|number_format(2, ',', ' ') }} €
+                                    {% elseif product and product.price is not null %}
+                                        {{ product.price|number_format(2, ',', ' ') }} €
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">
+                                    {% if originalFloat > 0 %}
+                                        {{ originalFloat|number_format(2, ',', ' ') }} €
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">
+                                    {% if isDiscounted and finalFloat < originalFloat %}
+                                        <div class="small text-muted text-decoration-line-through">
+                                            {{ originalFloat|number_format(2, ',', ' ') }} €
+                                        </div>
+                                        <div>
+                                            <strong>{{ finalFloat|number_format(2, ',', ' ') }} €</strong>
+                                        </div>
+                                    {% else %}
+                                        {% if finalFloat > 0 %}
+                                            <strong>{{ finalFloat|number_format(2, ',', ' ') }} €</strong>
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">
+                                    {% if isDiscounted %}
+                                        <span class="badge bg-warning text-dark">
+                                            Remisé
+                                        </span>
+                                        {% if discountLabel %}
+                                            <div class="small text-muted mt-1">
+                                                {{ discountLabel }}
+                                            </div>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-muted small">Aucune</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

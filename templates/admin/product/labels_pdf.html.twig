@@ -1,0 +1,138 @@
+{# templates/admin/product/labels_pdf.html.twig #}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Étiquettes {% if product %}{{ product.reference }}{% else %}produits{% endif %}</title>
+    <style>
+        @page {
+            size: A4 portrait;
+            margin: 0mm;
+        }
+
+        body {
+            font-family: DejaVu Sans, Arial, sans-serif;
+            font-size: 8px;
+            margin: 0;
+            padding: 0;
+        }
+
+        .page-break {
+            page-break-after: always;
+        }
+
+        .page {
+            position: relative;
+            width: 210mm;
+            height: 297mm;
+        }
+
+        .label {
+            position: absolute;
+            width: 52.5mm;
+            height: 21.2mm;
+            box-sizing: border-box;
+            padding: 1mm 3mm;
+            overflow: hidden;
+
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        .label-header {
+            font-size: 6px;
+            margin-bottom: 0.5mm;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.1;
+        }
+
+        .label-ref {
+            font-size: 8px;
+            text-transform: uppercase;
+        }
+
+        .label-datamatrix {
+            margin: 0.5mm 0;
+            line-height: 1.1;
+        }
+
+        .label-datamatrix img {
+            display: block;
+            margin: 0 auto;
+            max-width: 10mm;
+            max-height: 10mm;
+        }
+
+        .label-footer {
+            font-size: 7px;
+            line-height: 1.1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.3mm;
+            margin-top: 0.3mm;
+        }
+
+        .label-size {
+            font-weight: normal;
+        }
+
+        .label-price {
+            font-weight: bold;
+            font-size: 8px;
+        }
+    </style>
+</head>
+<body>
+
+{% for page in pages %}
+    <div class="page">
+        {% for label in page %}
+            {% set idx  = loop.index0 %}
+            {% set row  = (idx // 4) %}
+            {% set col  = (idx % 4) %}
+
+            {% set top  = row * 21.2 %}
+            {% set left = col * 52.5 %}
+
+            <div class="label" style="top: {{ top }}mm; left: {{ left }}mm;">
+                {# Si la case est "vide" (offset), on laisse l'étiquette blanche #}
+                {% if label %}
+                    <div class="label-header">
+                        <span class="label-ref">{{ label.reference }}</span>
+                    </div>
+
+                    <div class="label-datamatrix">
+                        {% if label.datamatrix is defined %}
+                            <img src="data:image/png;base64,{{ label.datamatrix }}"
+                                 alt="{{ label.code_value }}">
+                        {% else %}
+                            <span>{{ label.code_value }}</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="label-footer">
+                        <span class="label-size">
+                            T. {{ label.size }}
+                        </span>
+                        <span class="label-price">
+                            {{ label.price|number_format(0, ',', ' ') }} €
+                        </span>
+                    </div>
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
+
+    {% if not loop.last %}
+        <div class="page-break"></div>
+    {% endif %}
+{% endfor %}
+
+</body>
+</html>

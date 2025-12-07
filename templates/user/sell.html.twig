@@ -16,16 +16,19 @@
                     <span class="text-muted">({{ current_location.code }})</span>
                 </p>
             {% endif %}
-            <a href="{{ path('user_select_location') }}" class="link-secondary small">
+            <a href="{{ path('user_select_location') }}" class="btn btn-link p-0 small">
                 Changer de magasin
             </a>
         </div>
-        <a href="{{ path('user_dashboard') }}" class="btn btn-outline-secondary btn-sm">
-            ← Accueil vendeuse
-        </a>
+
+        <div class="d-flex flex-column align-items-end gap-2">
+            <a href="{{ path('user_dashboard') }}" class="btn btn-outline-secondary btn-sm">
+                ← Retour au dashboard
+            </a>
+        </div>
     </div>
 
-    {# Messages flash #}
+    {# Flashes #}
     {% for label, messages in app.flashes %}
         {% for message in messages %}
             <div class="alert alert-{{ label }} alert-dismissible fade show" role="alert">
@@ -36,253 +39,374 @@
     {% endfor %}
 
     <div class="row g-4">
-        {# Colonne gauche : saisie article #}
-        <div class="col-12 col-lg-5">
-            <div class="card shadow-sm border-0 h-100">
-                <div class="card-body">
-                    <h2 class="h5 mb-3">Saisie produit</h2>
 
-                    <form method="post" action="{{ path('user_sell_add_line') }}">
+        {# ============================ #
+           |   COLONNE GAUCHE : VENTE   |
+           # ============================ #}
+        <div class="col-12 col-lg-5">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Ajouter un article au panier</h2>
+
+                    <p class="text-muted small">
+                        Scannez <code>RÉFÉRENCE-TAILLE</code> ou saisissez la référence.
+                        Sélectionnez ensuite la taille et la quantité.
+                    </p>
+
+                    <form id="sell_add_line_form" method="post" action="{{ path('user_sell_add_line') }}">
+
+                        {# --- Référence --- #}
                         <div class="mb-3">
-                            <label class="form-label fw-semibold">Référence produit</label>
+                            <label for="sell_reference" class="form-label">Référence produit</label>
                             <input
                                 type="text"
                                 id="sell_reference"
                                 name="reference"
                                 class="form-control form-control-lg"
-                                placeholder="Ex : ZARA_ETE2025_ROBE_BLEUE"
                                 autocomplete="off"
+                                placeholder="Scannez ou tapez la référence"
                                 required
                                 data-autocomplete="product-reference"
-                                data-autocomplete-url="{{ path('autocomplete_product_reference') }}"
+                                list="product_reference_autocomplete"
                             >
                             <div class="form-text">
-                                Scannez ou saisissez la référence. Les tailles disponibles pour ce magasin apparaîtront automatiquement.
+                                Scannez <code>REFERENCE-TAILLE</code> ou saisissez la référence.
                             </div>
                         </div>
 
-                        {# Taille sélectionnée : input caché + boutons de tailles (remplacent l'ID technique) #}
+                        {# --- Tailles (injection JS) --- #}
                         <div class="mb-3">
-                            <label class="form-label fw-semibold">
-                                Taille
-                            </label>
+                            <label class="form-label d-block">Taille</label>
+                            <div id="sell_sizes_buttons" class="d-flex flex-wrap gap-2"></div>
 
-                            {# input caché qui reçoit l'ID de taille choisi #}
-                            <input type="hidden" name="size_id" id="sell_size_id" required>
+                            <input type="hidden" id="sell_size_id" name="size_id">
 
-                            <div id="sell_sizes_container">
-                                <p class="text-muted small mb-2">
-                                    Saisissez ou scannez une référence pour afficher les tailles disponibles dans ce magasin.
-                                </p>
-                                <div id="sell_sizes_buttons" class="d-flex flex-wrap gap-2">
-                                    {# Boutons générés dynamiquement en JS #}
-                                </div>
+                            <div class="form-text">
+                                Sélectionnez une taille disponible dans ce magasin.
                             </div>
                         </div>
 
+                        {# --- Quantité --- #}
                         <div class="mb-3">
-                            <label class="form-label fw-semibold">Quantité</label>
+                            <label for="sell_quantity" class="form-label">Quantité</label>
                             <input
                                 type="number"
+                                id="sell_quantity"
                                 name="quantity"
+                                class="form-control"
                                 min="1"
                                 value="1"
-                                class="form-control form-control-lg"
                                 required
                             >
                         </div>
 
-                        <button
-                            type="submit"
-                            class="btn btn-primary btn-lg w-100"
-                            id="sell_add_to_cart_btn"
-                            disabled
-                        >
-                            Ajouter au panier
-                        </button>
+                        {# --- Boutons --- #}
+                        <div class="d-flex justify-content-between align-items-center">
+                            <button
+                                type="submit"
+                                class="btn btn-primary btn-lg"
+                                id="sell_add_to_cart_btn"
+                            >
+                                Ajouter au panier
+                            </button>
+
+                            <button type="reset" class="btn btn-outline-secondary btn-sm">
+                                Réinitialiser
+                            </button>
+                        </div>
+
                     </form>
 
-                    <hr class="my-4">
-
-                    <p class="text-muted small mb-0">
-                        Astuce : vous pouvez scanner plusieurs fois de suite les produits.
-                        Les quantités seront cumulées directement dans le ticket.
-                    </p>
                 </div>
             </div>
         </div>
 
-        {# Colonne droite : panier + totaux #}
-        <div class="col-12 col-lg-7">
-            <div class="card shadow-sm border-0 mb-3">
+
+        {# ================================================= #
+           |        COLONNE DROITE : PANIER + PAIEMENT       |
+           # ================================================= #}
+        <div class="col-12 col-lg-7 d-flex flex-column gap-4">
+
+            {# --- Panier --- #}
+            <div class="card border-0 shadow-sm flex-grow-1">
                 <div class="card-body">
-                    <h2 class="h5 mb-3 d-flex justify-content-between align-items-center">
-                        <span>Ticket en cours</span>
-                        {% if cart is defined and cart|length > 0 %}
-                            <span class="badge bg-secondary">
-                                {{ cart|length }} ligne{{ cart|length > 1 ? 's' : '' }}
-                            </span>
-                        {% endif %}
-                    </h2>
+                    <h2 class="h5 mb-3">Panier</h2>
 
                     {% if cart is empty %}
-                        <p class="text-muted mb-0">
-                            Aucun article dans le panier pour l’instant.
-                            Ajoutez un produit depuis le formulaire de gauche.
-                        </p>
+                        <p class="text-muted">Aucun article dans le panier.</p>
+
                     {% else %}
                         <div class="table-responsive">
-                            <table class="table align-middle mb-0">
+                            <table class="table align-middle">
                                 <thead>
-                                <tr>
-                                    <th>Référence</th>
-                                    <th class="d-none d-md-table-cell">Produit</th>
-                                    <th>Taille</th>
-                                    <th class="text-end">Qté</th>
-                                    <th class="text-end">PU</th>
-                                    <th class="text-end">Total</th>
-                                    <th class="text-end"></th>
-                                </tr>
+                                    <tr>
+                                        <th>Référence</th>
+                                        <th>Produit</th>
+                                        <th class="text-center">Taille</th>
+                                        <th class="text-center">Qté</th>
+                                        <th class="text-end">PU</th>
+                                        <th class="text-center">Remise article</th>
+                                        <th class="text-end">Total</th>
+                                        <th></th>
+                                    </tr>
                                 </thead>
                                 <tbody>
-                                {% for line in cart %}
-                                    <tr>
-                                        <td class="small">
-                                            <div class="fw-semibold">{{ line.product_reference }}</div>
-                                        </td>
-                                        <td class="small d-none d-md-table-cell">
-                                            {{ line.product_name }}
-                                        </td>
-                                        <td>{{ line.size_name }}</td>
-                                        <td class="text-end">{{ line.quantity }}</td>
-                                        <td class="text-end">
-                                            {{ line.unit_price|number_format(2, ',', ' ') }} €
-                                        </td>
-                                        <td class="text-end">
-                                            {{ (line.unit_price * line.quantity)|number_format(2, ',', ' ') }} €
-                                        </td>
-                                        <td class="text-end">
-                                            <form
-                                                method="post"
-                                                action="{{ path('user_sell_remove_line', { index: loop.index0 }) }}"
-                                                class="d-inline"
-                                            >
-                                                <button type="submit" class="btn btn-sm btn-outline-danger">
-                                                    ✕
-                                                </button>
-                                            </form>
-                                        </td>
-                                    </tr>
-                                {% endfor %}
+                                    {% for lineKey, line in cart %}
+                                        {% set unit = line.unit_price %}
+                                        {% set qty = line.quantity %}
+                                        {% set line_discount = line.discount_percent|default(0) %}
+                                        {% set original_total = unit * qty %}
+                                        {% set final_total = (line_discount > 0)
+                                            ? original_total * (1 - (line_discount / 100))
+                                            : original_total
+                                        %}
+
+                                        <tr>
+                                            <td><code>{{ line.reference }}</code></td>
+                                            <td>{{ line.name }}</td>
+                                            <td class="text-center">{{ line.size_name }}</td>
+                                            <td class="text-center">{{ qty }}</td>
+                                            <td class="text-end">{{ unit|number_format(2, ',', ' ') }} €</td>
+
+                                            {# --- Remises par article --- #}
+                                            <td class="text-center">
+                                                <form
+    method="post"
+    action="{{ path('user_sell_set_line_discount', { lineKey: lineKey }) }}"
+    class="d-grid gap-1"
+    style="grid-template-columns: repeat(3, 1fr); max-width: 260px; margin: 0 auto;"
+>
+    {% set line_current = line.discount_percent|default(0) %}
+
+    {# Ligne 1 : 0%, -10%, -20% #}
+    <button
+        type="submit"
+        name="discount_percent"
+        value="0"
+        class="btn btn-sm {% if line_current == 0 %}btn-outline-secondary active{% else %}btn-outline-secondary{% endif %}"
+        {% if not sale_mode_enabled %}disabled{% endif %}
+    >0%</button>
+
+    <button
+        type="submit"
+        name="discount_percent"
+        value="10"
+        class="btn btn-sm {% if line_current == 10 %}btn-success{% else %}btn-outline-success{% endif %}"
+        {% if not sale_mode_enabled %}disabled{% endif %}
+    >-10%</button>
+
+    <button
+        type="submit"
+        name="discount_percent"
+        value="20"
+        class="btn btn-sm {% if line_current == 20 %}btn-success{% else %}btn-outline-success{% endif %}"
+        {% if not sale_mode_enabled %}disabled{% endif %}
+    >-20%</button>
+
+    {# Ligne 2 : -30%, -40%, -50% #}
+    <button
+        type="submit"
+        name="discount_percent"
+        value="30"
+        class="btn btn-sm {% if line_current == 30 %}btn-success{% else %}btn-outline-success{% endif %}"
+        {% if not sale_mode_enabled %}disabled{% endif %}
+    >-30%</button>
+
+    <button
+        type="submit"
+        name="discount_percent"
+        value="40"
+        class="btn btn-sm {% if line_current == 40 %}btn-success{% else %}btn-outline-success{% endif %}"
+        {% if not sale_mode_enabled %}disabled{% endif %}
+    >-40%</button>
+
+    <button
+        type="submit"
+        name="discount_percent"
+        value="50"
+        class="btn btn-sm {% if line_current == 50 %}btn-success{% else %}btn-outline-success{% endif %}"
+        {% if not sale_mode_enabled %}disabled{% endif %}
+    >-50%</button>
+
+</form>
+
+{% if not sale_mode_enabled %}
+    <div class="text-muted small mt-1 text-center">
+        Mode soldes désactivé
+    </div>
+{% endif %}
+
+
+                                                {% if not sale_mode_enabled %}
+                                                    <div class="text-muted small mt-1">
+                                                        Mode promotions désactivé
+                                                    </div>
+                                                {% endif %}
+                                            </td>
+
+                                            {# Total #}
+                                            <td class="text-end">
+                                                {% if line_discount > 0 %}
+                                                    <div class="small text-muted text-decoration-line-through">
+                                                        {{ original_total|number_format(2, ',', ' ') }} €
+                                                    </div>
+                                                    <strong>{{ final_total|number_format(2, ',', ' ') }} €</strong>
+                                                {% else %}
+                                                    <strong>{{ original_total|number_format(2, ',', ' ') }} €</strong>
+                                                {% endif %}
+                                            </td>
+
+                                            <td class="text-end">
+                                                <form method="post"
+                                                      action="{{ path('user_sell_remove_line', { lineKey }) }}">
+                                                    <button class="btn btn-sm btn-outline-danger">✕</button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
                                 </tbody>
                             </table>
                         </div>
+
+                        <form method="post" action="{{ path('user_sell_clear_cart') }}" class="mt-2">
+                            <button class="btn btn-outline-secondary btn-sm">Vider le panier</button>
+                        </form>
                     {% endif %}
                 </div>
             </div>
 
-            {# Totaux + réduction + bon d'achat #}
-            <div class="card shadow-sm border-0 mb-3">
+            {# --- Paiement --- #}
+            <div class="card border-0 shadow-sm">
                 <div class="card-body">
-                    <h2 class="h6 mb-3">Récapitulatif</h2>
 
-                    {% set total = totals.total ?? 0 %}
-                    {% set total_after = totals.total_after_discount ?? total %}
-                    {% set discount_rate = totals.discount_rate ?? 0 %}
-                    {% set current_voucher = voucher_amount ?? 0 %}
-                    {% set current_cash = cash_amount ?? (total_after - current_voucher) %}
+                    <h2 class="h5 mb-3">Récapitulatif & paiement</h2>
 
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span>Total brut (avant réduction)</span>
-                        <strong>{{ total|number_format(2, ',', ' ') }} €</strong>
-                    </div>
+                    {% if cart is empty %}
+                        <p class="text-muted">Ajoutez un article pour voir le récapitulatif.</p>
 
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span>Réduction</span>
-                        {% if discount_applied %}
-                            <span class="text-success fw-semibold">
-                                - {{ (discount_rate * 100)|number_format(0) }} %
-                            </span>
-                        {% else %}
-                            <span class="text-muted">Aucune</span>
-                        {% endif %}
-                    </div>
+                    {% else %}
+                        {% set total_brut = totals.total %}
+                        {% set total_after = totals.total_after_discount %}
+                        {% set discount_detail = totals.discount_detail %}
+                        {% set basket_discount_percent = basket_discount_percent %}
 
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span>Total après réduction (arrondi à l’euro supérieur)</span>
-                        <span class="fs-5 fw-bold">
-                            {{ total_after|number_format(2, ',', ' ') }} €
-                        </span>
-                    </div>
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between">
+                                <span>Total brut</span>
+                                <strong>{{ total_brut|number_format(2, ',', ' ') }} €</strong>
+                            </div>
 
-                    {# Formulaire pour définir le montant payé en bon d'achat #}
-                    <form method="post" action="{{ path('user_sell_set_voucher') }}" class="row g-2 align-items-center mb-2 mt-2">
-                        <div class="col-7 col-md-8">
-                            <label class="form-label fw-semibold mb-1">Montant payé en bon d'achat</label>
-                            <input
-                                type="number"
-                                name="voucher_amount"
-                                min="0"
-                                step="1"
-                                class="form-control form-control-sm"
-                                value="{{ current_voucher|number_format(0, '', '') }}"
-                                {% if cart is empty %}disabled{% endif %}
-                            >
-                            <div class="form-text small">
-                                Ne pas dépasser le total après réduction. Ce montant ne comptera pas dans le CA vendeuse.
+                            <div class="d-flex justify-content-between">
+                                <span>Remises articles</span>
+                                {% if discount_detail.line_rate_sum > 0 %}
+                                    <span class="text-success">-
+                                        {{ discount_detail.line_rate_sum|number_format(2, ',', ' ') }} €
+                                    </span>
+                                {% else %}
+                                    <span class="text-muted">Aucune</span>
+                                {% endif %}
+                            </div>
+
+                            <div class="d-flex justify-content-between">
+                                <span>Remise panier</span>
+                                {% if basket_discount_percent == 10 %}
+                                    <span>-10%</span>
+                                {% else %}
+                                    <span class="text-muted">Aucune</span>
+                                {% endif %}
+                            </div>
+
+                            <div class="d-flex justify-content-between">
+                                <span>Total après remises</span>
+                                <strong>{{ total_after|number_format(2, ',', ' ') }} €</strong>
                             </div>
                         </div>
-                        <div class="col-5 col-md-4 d-flex align-items-end">
-                            <button
-                                type="submit"
-                                class="btn btn-outline-primary btn-sm w-100"
-                                {% if cart is empty %}disabled{% endif %}
-                            >
-                                Mettre à jour
-                            </button>
+
+                        {# Remise panier toujours dispo #}
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="fw-semibold">Remise panier (-10 %)</span>
+                                <span class="badge bg-info text-dark">Toujours disponible</span>
+                            </div>
+
+                            <form method="post" action="{{ path('user_sell_toggle_discount') }}" class="d-flex gap-2">
+                                <button
+                                    type="submit"
+                                    name="discount_percent"
+                                    value="0"
+                                    class="btn btn-sm
+                                        {% if basket_discount_percent == 0 %}btn-outline-secondary active
+                                        {% else %}btn-outline-secondary{% endif %}"
+                                >
+                                    Aucune
+                                </button>
+
+                                <button
+                                    type="submit"
+                                    name="discount_percent"
+                                    value="10"
+                                    class="btn btn-sm
+                                        {% if basket_discount_percent == 10 %}btn-success
+                                        {% else %}btn-outline-success{% endif %}"
+                                >
+                                    -10%
+                                </button>
+                            </form>
+
+                            <p class="text-muted small mt-1">
+                                Cette remise s'applique sur le total après remises articles.
+                            </p>
                         </div>
-                    </form>
 
-                    <div class="d-flex justify-content-between align-items-center mb-1 mt-2">
-                        <span>Montant payé réellement (base CA vendeuse)</span>
-                        <span class="fw-bold">
-                            {{ current_cash|number_format(2, ',', ' ') }} €
-                        </span>
-                    </div>
+                        {# Bon d'achat #}
+                        <div class="mb-3">
+                            <form method="post" action="{{ path('user_sell_set_voucher') }}"
+                                  class="row gy-2 gx-2 align-items-end">
+                                <div class="col-7 col-md-5">
+                                    <label for="voucher_amount" class="form-label mb-1">Bon d'achat (€)</label>
+                                    <input
+                                        type="number"
+                                        id="voucher_amount"
+                                        name="voucher_amount"
+                                        class="form-control"
+                                        min="0"
+                                        step="1"
+                                        value="{{ voucher_amount }}"
+                                    >
+                                </div>
+                                <div class="col-5 col-md-auto">
+                                    <button type="submit" class="btn btn-outline-primary w-100">
+                                        Appliquer
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
 
-                    <p class="text-muted small mb-3">
-                        Le montant final utilisé pour le journal des ventes et le calcul des
-                        commissions pourra se baser sur ce montant payé réellement (total après réduction,
-                        moins le montant en bon d'achat).
-                    </p>
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between">
+                                <span>Bon d'achat utilisé</span>
+                                <strong>{{ voucher_amount }} €</strong>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <span class="fw-semibold">Montant à payer</span>
+                                <span class="fw-bold fs-5">
+                                    {{ cash_amount|number_format(2, ',', ' ') }} €
+                                </span>
+                            </div>
+                        </div>
 
-                    <form method="post" action="{{ path('user_sell_toggle_discount') }}" class="d-inline">
-                        {% if discount_applied %}
-                            <button type="submit" class="btn btn-outline-warning btn-sm">
-                                Retirer la réduction 10 %
+                        <form method="post" action="{{ path('user_sell_validate') }}">
+                            <button type="submit" class="btn btn-success btn-lg w-100">
+                                Valider la vente
                             </button>
-                        {% else %}
-                            <button type="submit" class="btn btn-outline-success btn-sm">
-                                Appliquer une réduction 10 %
-                            </button>
-                        {% endif %}
-                    </form>
+                        </form>
+
+                    {% endif %}
                 </div>
             </div>
 
-            {# Boutons bas de page : annuler / valider #}
-            <div class="d-flex flex-column flex-md-row gap-3">
-                <form method="post" action="{{ path('user_sell_validate') }}" class="flex-fill">
-                    <button
-                        type="submit"
-                        class="btn btn-success btn-lg w-100"
-                        {% if cart is empty %}disabled{% endif %}
-                    >
-                        Valider la vente
-                    </button>
-                </form>
-            </div>
         </div>
+
     </div>
 </div>
 {% endblock %}
